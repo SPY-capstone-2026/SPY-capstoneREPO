@@ -17,5 +17,5 @@
 | 사용 기술 | PyTorch 기반 AI/ML 모델을 활용해 소비 패턴 분석 및 예측 기능을 구현하고, Pandas와 NumPy를 통해 지출 데이터 처리 및 시계열 분석을 수행한다. OpenAI API를 활용해 자연어 입력 조건 분석과 개인화 인사이트 생성을 지원하며, 사용자 소비 패턴 기반의 하이브리드 추천 시스템을 적용한다. 프론트엔드는 Kotlin(Android Native)과 Retrofit, 백엔드는 FastAPI, 데이터베이스는 MySQL을 사용한다. |
 | 기대 효과 | 본 서비스는 데이터 기반 피드백을 통해 사용자의 실제 소비 행동 변화를 유도하고, 예산 준수율 향상과 소비 습관 개선에 기여할 것으로 기대된다. 또한 감정형 피드백과 보상 시스템을 통해 사용자 참여도와 지속 사용성을 높이고, 개인화 추천을 바탕으로 보다 효율적이고 합리적인 소비 의사결정을 지원할 수 있다. |
 | GitHub Repo | [https://github.com/SPY-capstone-2026/SPY-capstoneREPO](https://github.com/SPY-capstone-2026/SPY-capstoneREPO) |
-| Team Ground Rule | https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/main/Team_Ground_Rule.md |
+| Team Ground Rule | [https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/main/Team_Ground_Rule.md](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/main/Team_Ground_Rule.md) |
 | 최종수정일 | 2026.03.19 |
