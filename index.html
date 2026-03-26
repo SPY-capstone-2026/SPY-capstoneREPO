@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="ko">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,25 +14,30 @@
       font-family: Arial, sans-serif;
       line-height: 1.6;
     }
+
     img {
       max-width: 100%;
     }
+
     pre {
       background: #f6f8fa;
       padding: 12px;
       border-radius: 6px;
       overflow-x: auto;
     }
+
     code {
       background: #f6f8fa;
       padding: 2px 4px;
       border-radius: 4px;
     }
+
     a {
       color: #0969da;
     }
   </style>
 </head>
+
 <body>
   <div id="content">로딩 중...</div>
 
@@ -45,5 +51,26 @@
         document.getElementById('content').innerHTML = '<p>README.md를 불러오지 못했습니다.</p>';
       });
   </script>
+
+  <h2>덧셈 계산기</h2>
+
+  <input id="a" placeholder="숫자1">
+  <input id="b" placeholder="숫자2">
+  <button onclick="add()">Submit</button>
+
+  <p id="result"></p>
+
+  <script>
+    async function add() {
+      const a = document.getElementById("a").value;
+      const b = document.getElementById("b").value;
+
+      const res = await fetch(`/api/add?a=${a}&b=${b}`);
+      const data = await res.json();
+
+      document.getElementById("result").innerText = "결과: " + data.result;
+    }
+  </script>
 </body>
+
 </html>
