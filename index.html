@@ -41,6 +41,14 @@
 <body>
   <div id="content">로딩 중...</div>
 
+  <h2>덧셈 계산기</h2>
+
+  <input id="a" placeholder="숫자1">
+  <input id="b" placeholder="숫자2">
+  <button onclick="add()">Submit</button>
+
+  <p id="result"></p>
+
   <script>
     fetch('./README.md')
       .then(response => response.text())
@@ -51,14 +59,6 @@
         document.getElementById('content').innerHTML = '<p>README.md를 불러오지 못했습니다.</p>';
       });
   </script>
-
-  <h2>덧셈 계산기</h2>
-
-  <input id="a" placeholder="숫자1">
-  <input id="b" placeholder="숫자2">
-  <button onclick="add()">Submit</button>
-
-  <p id="result"></p>
 
   <script>
     async function add() {
