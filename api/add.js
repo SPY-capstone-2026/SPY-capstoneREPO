@@ -1,10 +1,11 @@
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 
 export default async function handler(req, res) {
     const { a, b } = req.query;
     const result = Number(a) + Number(b);
 
     try {
+        const sql = neon(process.env.DATABASE_URL);
         await sql`CREATE TABLE IF NOT EXISTS logs (
             id SERIAL PRIMARY KEY,
             a FLOAT, b FLOAT, result FLOAT,
