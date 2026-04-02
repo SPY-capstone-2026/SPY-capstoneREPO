@@ -19,3 +19,109 @@
 | GitHub Repo | [https://github.com/SPY-capstone-2026/SPY-capstoneREPO](https://github.com/SPY-capstone-2026/SPY-capstoneREPO) |
 | Team Ground Rule | [https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/main/Team_Ground_Rule.md](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/main/Team_Ground_Rule.md) |
 | 최종수정일 | 2026.03.19 |
+
+# 🪙 Moni - AI 기반 개인화 소비 코칭 앱
+
+> AI가 내 소비를 예측하고, 캐릭터가 오늘 바로 실천할 수 있는 챌린지를 줘서 소비 습관을 바꿔주는 Android 앱
+
+<br>
+
+## 📌 프로젝트 소개
+
+많은 사람들이 예산을 세우지만 매달 초과합니다.  
+어디서 새는지는 알아도, **오늘 뭘 해야 할지** 모르기 때문입니다.
+
+Moni는 AI가 내 소비 패턴을 예측하고, 캐릭터가 **오늘 바로 달성할 수 있는 챌린지**를 매일 제시합니다.  
+챌린지를 달성하면 캐릭터가 레벨업하고, 소비 습관이 조금씩 바뀝니다.
+
+<br>
+
+## 🎯 타겟 사용자
+
+- 예산은 세우는데 매달 초과하는 대학생 / 사회초년생
+- 어디서 새는지는 아는데 고쳐지지 않는 사람
+- 소비 줄이고 싶은데 동기부여가 안 되는 사람
+
+<br>
+
+## 🆚 기존 서비스와의 차이
+
+| 구분 | 토스 / 뱅크샐러드 | Moni |
+|------|------------------|------|
+| 데이터 방식 | 쓴 돈을 기록하고 보여줌 | 쓸 돈을 예측하고 미리 개입 |
+| 개입 시점 | 이미 쓴 후 (후행적) | 쓰기 전에 선제적으로 |
+| 동기부여 | 통계 및 그래프 제공 | 캐릭터 + 데일리 챌린지 |
+| 개인화 | 전체 소비 분석 | 내가 정한 카테고리만 집중 |
+| 행동 제안 | 없음 | 오늘 바로 실천할 챌린지 제시 |
+
+<br>
+
+## ✨ 핵심 기능
+
+### 1. 소비 예측 모델
+- 과거 소비 데이터를 분석해 이번 달 카테고리별 지출 예측
+- 고정 지출 / 변동 지출을 분리해 예측 정확도 향상
+- 비정기 큰 지출 발생 시 남은 기간 목표 자동 재계산
+
+```
+지난달 카페 소비: 75,000원 / 지지난달: 68,000원
+→ 이번 달 예측: 72,000원 (목표: 60,000원)
+→ "이 페이스면 카페에 72,000원 쓸 것 같아요. 12,000원 초과 예정이에요."
+```
+
+### 2. 데일리 챌린지
+- 예측 현황에 맞는 오늘 달성 가능한 챌린지를 매일 자동 생성
+- 전날 소비가 많으면 더 타이트하게, 잘 지켰으면 여유롭게
+- 캐릭터 페르소나 적용으로 일관된 말투 유지
+
+```
+"오늘 카페 한 번만 참으면 나 쪼금 더 커질 수 있어... 🥺"
+"야 오늘 배달 말고 편의점 가면 우리 둘 다 레벨업이야. 윈윈 아니야?"
+```
+
+### 3. 개인화 캐릭터 성장
+- 줄이고 싶은 카테고리가 사람마다 다르므로 레벨업 조건도 개인화
+- 레벨에 따라 캐릭터 말투 변화 (수줍음 → 친근함 → 절친)
+- 실패해도 다음날 새 챌린지로 리셋
+
+<br>
+
+## 🛠 기술 스택
+
+| 영역 | 기술 |
+|------|------|
+| Frontend | Kotlin (Android Native) |
+| Backend | FastAPI (Python 3.11) |
+| Database | MySQL, Redis |
+| AI 예측 | Prophet / ARIMA / LSTM 비교 실험 |
+| 챌린지 생성 | OpenAI GPT API |
+
+<br>
+
+## 👥 팀원
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/images/신희조.jpg" width="100" height="100" style="border-radius: 50%"/><br/>
+      <b>신희조</b><br/>
+      AI / 데이터 분석
+    </td>
+    <td align="center">
+      <img src="docs/images/윤수연.jpg" width="100" height="100" style="border-radius: 50%"/><br/>
+      <b>윤수연</b><br/>
+      백엔드
+    </td>
+    <td align="center">
+      <img src="docs/images/박은수.jpg" width="100" height="100" style="border-radius: 50%"/><br/>
+      <b>박은수</b><br/>
+      Android
+    </td>
+  </tr>
+</table>
+
+<br>
+
+## 📄 라이선스
+
+MIT License
