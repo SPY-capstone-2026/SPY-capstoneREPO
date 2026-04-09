@@ -78,29 +78,3 @@ Moni는 AI가 내 소비 패턴을 예측하고, 캐릭터가 **오늘 바로 �
 | Database | MySQL, Redis |
 | AI 예측 | Python 기반 Prophet / ARIMA / LSTM 모델 비교 실험 |
 | 챌린지 생성 | OpenAI GPT API |
-
-<br>
-
-## 팀원
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="docs/images/신희조.jpg" width="100" height="100" style="border-radius: 50%"/><br/>
-      <b>신희조</b><br/>
-      AI
-    </td>
-    <td align="center">
-      <img src="docs/images/윤수연.jpg" width="100" height="100" style="border-radius: 50%"/><br/>
-      <b>윤수연</b><br/>
-      BE
-    </td>
-    <td align="center">
-      <img src="docs/images/박은수.jpg" width="100" height="100" style="border-radius: 50%"/><br/>
-      <b>박은수</b><br/>
-      FE
-    </td>
-  </tr>
-</table>
-
-<br>
