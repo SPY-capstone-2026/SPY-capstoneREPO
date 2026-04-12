@@ -243,7 +243,8 @@ reasons: ["현재 소비 페이스가 예산 범위 안에 있습니다."]
 ```text
 SPY-capstoneREPO/
 ├─ README.md
-├─ moni_test.ipynb
+└─ ai/
+   └─ moni_pipeline.ipynb
 ```
 
 ---
