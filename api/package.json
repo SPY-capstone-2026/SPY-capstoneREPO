@@ -1,6 +1,7 @@
 {
-  "name": "spy-calculator",
+  "name": "moni-api",
   "version": "1.0.0",
+  "description": "API server for Moni AI-based spending coaching service",
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"
   }
