@@ -1,7 +1,11 @@
 {
-  "name": "moni-api",
+  "name": "moni",
   "version": "1.0.0",
-  "description": "API server for Moni AI-based spending coaching service",
+  "description": "Backend API server for the Moni mobile application, an AI-based spending prediction and personalized consumption coaching service.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"
   }
