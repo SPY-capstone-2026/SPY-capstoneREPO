@@ -143,7 +143,7 @@ MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다.
 
 ### 실행 방법
 
-Google Colab에서 `moni_test.ipynb`를 열고, 상단 설정 셀에서 프로필과 시드를 선택한 뒤 전체 셀을 실행합니다.
+Google Colab에서 `ai/moni_pipeline.ipynb`를 열고, 상단 설정 셀에서 프로필과 시드를 선택한 뒤 전체 셀을 실행합니다.
 
 ```python
 # 상단 설정값 예시
@@ -262,7 +262,7 @@ SPY-capstoneREPO/
 
 ### 핵심 파이프라인
 
-- **moni_test.ipynb**  
+- **ai/moni_pipeline.ipynb**  
   전체 파이프라인이 담긴 단일 Colab 노트북입니다. 합성 소비 데이터 생성, Prophet 학습, 예측 평가, 챌린지 생성, Colab 내 HTML 결과 렌더링까지 하나의 셀에서 실행됩니다.
 
 ---
@@ -280,7 +280,7 @@ SPY-capstoneREPO/
 
 ## 처음 보는 사람을 위한 읽는 순서
 
-1. `moni_test.ipynb`를 Colab에서 열고 상단 설정값을 확인합니다.
+1. `ai/moni_pipeline.ipynb`를 Colab에서 열고 상단 설정값을 확인합니다.
 2. `run_pipeline()`이 어떤 흐름으로 예측과 챌린지 생성을 묶는지 봅니다.
 3. `generate_challenge()`에서 예산 압박도와 최근 소비 행동이 어떻게 챌린지로 변환되는지 확인합니다.
 4. 전체 셀을 실행해 결과를 재현합니다.
