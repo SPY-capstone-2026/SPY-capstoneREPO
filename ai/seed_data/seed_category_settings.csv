@@ -1,0 +1,5 @@
+id,user_id,category_name,budget_limit,is_daily_challenge,alert_threshold
+1,user-111,카페,30000,True,0.8
+2,user-111,식비,350000,True,0.9
+3,user-111,쇼핑,150000,True,0.8
+4,user-111,교통,80000,False,1.0

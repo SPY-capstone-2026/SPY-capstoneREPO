@@ -1,0 +1,2 @@
+user_id,email,password_hash,income_type,payday,spend_profile,valid_data_start_date,total_xp,current_level,created_at
+user-111,test@moni.app,$dummy$,ALLOWANCE,25,IMPULSIVE,,0,1,2025-11-14T00:00:00
