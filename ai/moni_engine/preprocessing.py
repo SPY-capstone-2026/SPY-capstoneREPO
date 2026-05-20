@@ -144,6 +144,49 @@ def get_month_to_date_actual(
     return float(mtd["amount"].sum())
 
 
+def compute_no_spend_streak(daily_df: pd.DataFrame, target_date) -> int:
+    """
+    target_date 직전(전날)부터 거슬러 올라가며 연속 무지출 일수를 센다.
+
+    Parameters
+    ----------
+    daily_df : pd.DataFrame
+        make_daily_series() 결과. columns: ds, y
+        (target_date 당일은 포함되지 않으므로 ds의 최댓값 = target_date 전날)
+    target_date : date | str
+        기준 날짜.
+
+    Returns
+    -------
+    int
+        연속 무지출 일수. 예: 어제와 그제 모두 0원이면 2.
+        daily_df가 비어있으면 0.
+
+    Note
+    ----
+    "어제까지 며칠 연속 안 썼는가"를 센다. 오늘(target_date)은 아직 진행 중이라 제외.
+    """
+    if daily_df.empty:
+        return 0
+
+    target_date = _coerce_date(target_date)
+    # ds 오름차순 정렬 후 뒤에서부터 0인지 확인
+    df = daily_df.sort_values("ds").reset_index(drop=True)
+
+    # target_date 전날까지만 고려 (make_daily_series가 이미 당일 제외하지만 방어적으로)
+    df = df[pd.to_datetime(df["ds"]).dt.date < target_date]
+    if df.empty:
+        return 0
+
+    streak = 0
+    for y in reversed(df["y"].tolist()):
+        if y == 0:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 def has_category_correction(
     transactions_df: pd.DataFrame,
     user_id: str,

@@ -27,6 +27,15 @@ PRESSURE_TIERS = [
     (1.5, float("inf"), "금지형",  "Hard",        30),
 ]
 
+# Streak 보너스 챌린지 설정
+STREAK_MIN_DAYS = 2          # 연속 무지출 며칠부터 streak 챌린지 발동
+STREAK_BASE_XP = 15          # streak 기본 XP
+STREAK_XP_PER_DAY = 5        # streak 1일당 추가 XP
+STREAK_XP_MAX = 60           # streak XP 상한
+# streak이 "의미 있으려면" 평소 자주 쓰는 카테고리여야 함.
+# 평소 거의 안 쓰는 카테고리(의류 등)의 무지출은 성취가 아니므로 제외.
+STREAK_MIN_NONZERO_RATIO = 0.4
+
 
 def _select_tier(pressure: float):
     for low, high, ctype, diff, xp in PRESSURE_TIERS:
@@ -152,4 +161,68 @@ def generate_challenge(
         "difficulty": difficulty,
         "xp_reward": xp_reward,
         "reason": reason,
+    }
+
+
+def streak_qualifies(streak_count: int, nonzero_ratio: float) -> bool:
+    """
+    이 카테고리가 streak 보너스 챌린지를 받을 자격이 있는지 판단.
+
+    조건:
+    - 연속 무지출 일수가 STREAK_MIN_DAYS 이상
+    - 평소 자주 쓰는 카테고리 (nonzero_ratio >= STREAK_MIN_NONZERO_RATIO)
+      → 평소 거의 안 쓰는 카테고리(의류 등)의 무지출은 성취가 아니므로 제외
+    """
+    return (
+        streak_count >= STREAK_MIN_DAYS
+        and nonzero_ratio >= STREAK_MIN_NONZERO_RATIO
+    )
+
+
+def _streak_xp(streak_count: int) -> int:
+    """streak 일수에 따른 보너스 XP. 길수록 높아지되 상한 적용."""
+    xp = STREAK_BASE_XP + streak_count * STREAK_XP_PER_DAY
+    return min(xp, STREAK_XP_MAX)
+
+
+def generate_streak_challenge(category_name: str, streak_count: int) -> dict:
+    """
+    무지출 streak 보너스 챌린지 생성.
+
+    압박도 챌린지와 별개로 추가되는 "버닝타임" 성격의 보너스 챌린지.
+    평소 자주 쓰던 카테고리를 며칠째 안 쓰고 있을 때, 그 streak을 이어가도록 격려.
+
+    Parameters
+    ----------
+    category_name : str
+        streak이 발생한 카테고리.
+    streak_count : int
+        연속 무지출 일수 (어제까지 기준).
+
+    Returns
+    -------
+    dict
+        {
+            "challenge_type": "streak형",
+            "challenge_text": str,
+            "difficulty": "Special",
+            "xp_reward": int,
+            "reason": str,
+        }
+    """
+    xp = _streak_xp(streak_count)
+    next_day = streak_count + 1  # 오늘 성공하면 며칠째가 되는지
+
+    return {
+        "challenge_type": "streak형",
+        "challenge_text": (
+            f"{category_name} 무지출 {streak_count}일 연속 중! "
+            f"오늘도 이어가서 {next_day}일째 달성해볼까요?"
+        ),
+        "difficulty": "Special",
+        "xp_reward": xp,
+        "reason": (
+            f"{category_name} {streak_count}일 연속 무지출을 이어가는 중입니다. "
+            f"오늘 성공 시 {next_day}일 연속 달성, 보너스 {xp} XP를 받을 수 있습니다."
+        ),
     }

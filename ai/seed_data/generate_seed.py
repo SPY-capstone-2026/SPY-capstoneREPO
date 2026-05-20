@@ -1,130 +1,160 @@
 """
-seed 데이터 생성기.
+seed 데이터 생성기 (BE 직장인 패턴 기반).
 
-은행 API로 받아올 과거 거래 내역을 흉내내는 더미데이터.
-백엔드가 별도로 더미데이터를 만들기 전까지 AI 엔진 단독 테스트용으로 사용.
+BE 팀원이 작성한 generate_office_worker_data를 그대로 사용하고,
+AI 엔진 테스트에 필요한 users / category_settings 시드를 추가로 생성한다.
+
+final_category 값: 카페, 식비, 의류, 화장품, 가전
+user_id: user-office-001
+기간: 2025-01-01 ~ 2025-12-31 (365일)
 """
 
-from datetime import date, timedelta
-import random
-
-import numpy as np
 import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import uuid
 
 
-def generate_seed_transactions(
-    user_id: str = "user-111",
-    end_date: date = date(2026, 5, 14),
-    days: int = 365,
-    seed: int = 42,
-) -> pd.DataFrame:
-    """
-    카페, 식비, 쇼핑, 교통 4개 카테고리에 대한 거래 내역 생성.
+# ============================================================
+# BE 팀원이 작성한 더미데이터 생성 코드 (원본 그대로)
+# ============================================================
+def generate_office_worker_data(user_id, start_date, days):
+    np.random.seed(42)  # 재현성을 위한 시드 고정
+    dates = [start_date + timedelta(days=i) for i in range(days)]
+    data = []
 
-    - 카페: 70% 확률로 매일 발생, 평균 5,500원, 최근 들어 증가 추세 (overspend)
-    - 식비: 거의 매일 발생, 평균 8,500원
-    - 쇼핑: 약 5% 확률로 발생 (sparse), 평균 35,000원
-    - 교통: 평일 매일, 평균 2,800원
-    - 일부 카페 거래는 mydata_category가 '식비'로 분류됐다가 final_category에서 '카페'로 보정됨
-    """
-    rng = np.random.RandomState(seed)
-    random.seed(seed)
+    for date in dates:
+        weekday = date.weekday()  # 0:월 ~ 6:일
+        is_weekend = weekday >= 5
+        is_payday_season = date.day in [25, 26, 27]
 
-    start_date = end_date - timedelta(days=days)
-    dates = pd.date_range(start_date, end_date - timedelta(days=1), freq="D")
+        # 1. 평일 패턴 (월~금)
+        if not is_weekend:
+            # [아침] 출근길 커피 (85% 확률)
+            if np.random.rand() < 0.85:
+                amount = np.random.choice([2000, 3000, 4500])
+                merchant = np.random.choice(['메가커피', '빽다방', '스타벅스'])
+                hour = np.random.randint(8, 9)
+                minute = np.random.randint(10, 50)
 
-    rows = []
-    tx_counter = 1
+                is_corrected = np.random.rand() < 0.3
+                mydata_cat = '식비' if is_corrected else '카페'
 
-    def add_tx(d, amount, merchant, mydata_cat, final_cat, corrected=False, tx_time="12:00:00"):
-        nonlocal tx_counter
-        rows.append({
-            "tx_id": f"tx-{tx_counter:06d}",
-            "user_id": user_id,
-            "tx_date": d.date(),
-            "tx_time": tx_time,
-            "amount": int(amount),
-            "merchant_name": merchant,
-            "mydata_category": mydata_cat,
-            "final_category": final_cat,
-            "is_user_corrected": corrected,
-        })
-        tx_counter += 1
+                data.append({
+                    'tx_id': str(uuid.uuid4())[:8], 'user_id': user_id,
+                    'tx_date': date.strftime('%Y-%m-%d'), 'tx_time': f"{hour:02d}:{minute:02d}:00",
+                    'amount': amount, 'merchant_name': merchant,
+                    'mydata_category': mydata_cat, 'final_category': '카페', 'is_user_corrected': is_corrected
+                })
 
-    for i, d in enumerate(dates):
-        is_weekend = d.weekday() >= 5
-        days_from_end = (dates[-1] - d).days
+            # [점심] 직장인 점심식사 (100% 확률)
+            amount = int(np.random.normal(10000, 2000))
+            amount = max(7000, round(amount, -2))
+            merchant = np.random.choice(['구내식당', '순대국밥', '김치찌개', '돈까스클럽', '샐러디'])
+            minute = np.random.randint(15, 45)
 
-        # ---- 카페: 70% 확률로 발생 ----
-        if rng.rand() < 0.70:
-            base = 5500
-            # 최근으로 갈수록 점진적 증가 (overspend 추세)
-            trend = max(0, (365 - days_from_end) * 4)
-            weekend_boost = 1500 if is_weekend else 0
-            noise = rng.normal(0, 1000)
-            amount = max(2000, base + trend + weekend_boost + noise)
+            data.append({
+                'tx_id': str(uuid.uuid4())[:8], 'user_id': user_id,
+                'tx_date': date.strftime('%Y-%m-%d'), 'tx_time': f"12:{minute:02d}:00",
+                'amount': amount, 'merchant_name': merchant,
+                'mydata_category': '식비', 'final_category': '식비', 'is_user_corrected': False
+            })
 
-            # 일부 거래는 마이데이터에서 식비로 잘못 분류 → 사용자 보정
-            if rng.rand() < 0.15:
-                add_tx(d, amount, "스타벅스", "식비", "카페", corrected=True,
-                       tx_time=f"{rng.randint(8, 20):02d}:30:00")
-            else:
-                add_tx(d, amount, "이디야커피", "카페", "카페",
-                       tx_time=f"{rng.randint(8, 20):02d}:15:00")
+            # [저녁] 야근 또는 소소한 저녁 (40% 확률)
+            if np.random.rand() < 0.4:
+                data.append({
+                    'tx_id': str(uuid.uuid4())[:8], 'user_id': user_id,
+                    'tx_date': date.strftime('%Y-%m-%d'), 'tx_time': f"19:{np.random.randint(0,50):02d}:00",
+                    'amount': np.random.choice([5000, 15000, 25000]),
+                    'merchant_name': np.random.choice(['CU편의점', '배달의민족', 'GS25']),
+                    'mydata_category': '식비', 'final_category': '식비', 'is_user_corrected': False
+                })
 
-        # ---- 식비: 95% 확률로 발생, 하루 1~2건 ----
-        if rng.rand() < 0.95:
-            n_meals = 1 + (1 if rng.rand() < 0.4 else 0)
-            for _ in range(n_meals):
-                amount = max(4000, rng.normal(8500, 2500))
-                add_tx(d, amount, "한솥도시락", "식비", "식비",
-                       tx_time=f"{rng.randint(11, 21):02d}:00:00")
+        # 2. 주말 패턴 (토~일)
+        else:
+            # [오후] 늦은 브런치 & 디저트 카페 (100% 확률, 금액 큼)
+            amount = int(np.random.normal(15000, 5000))
+            amount = max(8000, round(amount, -2))
+            hour = np.random.randint(13, 16)
 
-        # ---- 쇼핑: 5% 확률 (sparse) ----
-        if rng.rand() < 0.05:
-            amount = max(10000, rng.normal(35000, 15000))
-            add_tx(d, amount, "무신사", "쇼핑", "쇼핑",
-                   tx_time=f"{rng.randint(18, 23):02d}:00:00")
+            data.append({
+                'tx_id': str(uuid.uuid4())[:8], 'user_id': user_id,
+                'tx_date': date.strftime('%Y-%m-%d'), 'tx_time': f"{hour:02d}:{np.random.randint(0,50):02d}:00",
+                'amount': amount, 'merchant_name': np.random.choice(['감성카페', '스타벅스', '투썸플레이스']),
+                'mydata_category': '식비', 'final_category': '카페', 'is_user_corrected': True
+            })
 
-        # ---- 교통: 평일 매일 ----
-        if not is_weekend and rng.rand() < 0.92:
-            amount = max(1250, rng.normal(2800, 600))
-            add_tx(d, amount, "T머니", "교통", "교통",
-                   tx_time=f"{rng.randint(7, 9):02d}:30:00")
+            # [저녁] 맛집 또는 배달 폭발 (80% 확률)
+            if np.random.rand() < 0.8:
+                amount = int(np.random.normal(40000, 15000))
+                amount = max(20000, round(amount, -2))
 
-    return pd.DataFrame(rows)
+                data.append({
+                    'tx_id': str(uuid.uuid4())[:8], 'user_id': user_id,
+                    'tx_date': date.strftime('%Y-%m-%d'), 'tx_time': f"18:{np.random.randint(0,50):02d}:00",
+                    'amount': amount, 'merchant_name': np.random.choice(['삼겹살집', '배달의민족', '초밥집']),
+                    'mydata_category': '식비', 'final_category': '식비', 'is_user_corrected': False
+                })
+
+        # 3. 월급날 지름신 패턴 (쇼핑/가전)
+        if is_payday_season and np.random.rand() < 0.6:
+            amount = int(np.random.normal(150000, 50000))
+            amount = max(50000, round(amount, -3))
+
+            data.append({
+                'tx_id': str(uuid.uuid4())[:8], 'user_id': user_id,
+                'tx_date': date.strftime('%Y-%m-%d'), 'tx_time': f"21:{np.random.randint(0,50):02d}:00",
+                'amount': amount, 'merchant_name': np.random.choice(['무신사', '올리브영', '지그재그', '애플스토어']),
+                'mydata_category': '쇼핑', 'final_category': np.random.choice(['의류', '화장품', '가전']),
+                'is_user_corrected': False
+            })
+
+    df = pd.DataFrame(data)
+    df['datetime'] = pd.to_datetime(df['tx_date'] + ' ' + df['tx_time'])
+    df = df.sort_values('datetime').drop(columns=['datetime']).reset_index(drop=True)
+    return df
 
 
-def generate_seed_users(user_id: str = "user-111") -> pd.DataFrame:
+# ============================================================
+# AI 엔진 테스트용 users / category_settings 시드 (AI 담당 작성)
+# ============================================================
+USER_ID = "user-office-001"
+
+
+def generate_seed_users(user_id=USER_ID):
     return pd.DataFrame([{
         "user_id": user_id,
-        "email": "test@moni.app",
+        "email": "office@moni.app",
         "password_hash": "$dummy$",
-        "income_type": "ALLOWANCE",
+        "income_type": "SALARY",
         "payday": 25,
-        "spend_profile": "IMPULSIVE",
+        "spend_profile": "STEADY",
         "valid_data_start_date": None,
         "total_xp": 0,
         "current_level": 1,
-        "created_at": "2025-11-14T00:00:00",
+        "created_at": "2024-12-01T00:00:00",
     }])
 
 
-def generate_seed_category_settings(user_id: str = "user-111") -> pd.DataFrame:
+def generate_seed_category_settings(user_id=USER_ID):
+    # budget_limit은 실제 소비 분포 기준으로 압박도가 다양하게 나오도록 설정 (팀 확정 시 교체)
     return pd.DataFrame([
         {"id": 1, "user_id": user_id, "category_name": "카페",
-         "budget_limit": 30000, "is_daily_challenge": True, "alert_threshold": 0.8},
+         "budget_limit": 100000, "is_daily_challenge": True, "alert_threshold": 0.8},
         {"id": 2, "user_id": user_id, "category_name": "식비",
-         "budget_limit": 350000, "is_daily_challenge": True, "alert_threshold": 0.9},
-        {"id": 3, "user_id": user_id, "category_name": "쇼핑",
-         "budget_limit": 150000, "is_daily_challenge": True, "alert_threshold": 0.8},
-        {"id": 4, "user_id": user_id, "category_name": "교통",
-         "budget_limit": 80000, "is_daily_challenge": False, "alert_threshold": 1.0},
+         "budget_limit": 400000, "is_daily_challenge": True, "alert_threshold": 0.9},
+        {"id": 3, "user_id": user_id, "category_name": "의류",
+         "budget_limit": 80000, "is_daily_challenge": True, "alert_threshold": 0.8},
+        {"id": 4, "user_id": user_id, "category_name": "화장품",
+         "budget_limit": 50000, "is_daily_challenge": True, "alert_threshold": 0.8},
+        {"id": 5, "user_id": user_id, "category_name": "가전",
+         "budget_limit": 100000, "is_daily_challenge": False, "alert_threshold": 1.0},
     ])
 
 
 if __name__ == "__main__":
-    tx_df = generate_seed_transactions()
+    start_date = datetime.strptime('2025-01-01', '%Y-%m-%d')
+    tx_df = generate_office_worker_data(USER_ID, start_date, 365)
     users_df = generate_seed_users()
     cat_df = generate_seed_category_settings()
 
@@ -132,12 +162,16 @@ if __name__ == "__main__":
     users_df.to_csv("seed_users.csv", index=False)
     cat_df.to_csv("seed_category_settings.csv", index=False)
 
-    print(f"transactions: {len(tx_df)} rows")
+    print(f"transactions: {len(tx_df)} rows (기간 2025-01-01 ~ 2025-12-31)")
     print(f"users:        {len(users_df)} rows")
     print(f"settings:     {len(cat_df)} rows")
     print()
-    print("--- transactions head ---")
-    print(tx_df.head())
-    print()
-    print("--- category counts ---")
+    print("--- 카테고리별 거래 건수 ---")
     print(tx_df["final_category"].value_counts())
+    print()
+    print("--- 카테고리별 월평균 소비 (대략) ---")
+    tx_df["tx_date"] = pd.to_datetime(tx_df["tx_date"])
+    tx_df["ym"] = tx_df["tx_date"].dt.to_period("M")
+    monthly = tx_df.groupby(["final_category", "ym"])["amount"].sum().groupby("final_category").mean()
+    for cat, val in monthly.items():
+        print(f"  {cat:6s}: {val:,.0f}원/월")
