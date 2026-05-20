@@ -1,33 +1,47 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { JellyTabBar } from '@/components/JellyTabBar';
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+export default function TabsLayout() {
   return (
     <Tabs
+      tabBar={(props) => <JellyTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: '홈',
         }}
       />
+
       <Tabs.Screen
-        name="explore"
+        name="challenge"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: '챌린지',
+        }}
+      />
+
+      <Tabs.Screen
+        name="report"
+        options={{
+          title: '리포트',
+        }}
+      />
+
+      <Tabs.Screen
+        name="transactions"
+        options={{
+          title: '소비',
+        }}
+      />
+
+      <Tabs.Screen
+        name="mypage"
+        options={{
+          title: '마이',
         }}
       />
     </Tabs>
