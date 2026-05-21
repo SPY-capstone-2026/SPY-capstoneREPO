@@ -78,9 +78,14 @@ class DailyChallenge(SQLModel, table=True):
 # ----------------------------------------
 # 데이터베이스 연결 엔진 설정 (SQLite 사용)
 # ----------------------------------------
-sqlite_file_name = "moni.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
-engine = create_engine(sqlite_url, echo=True)
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL, echo=True)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    
