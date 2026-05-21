@@ -48,3 +48,191 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Icon Attribution
+
+This project uses [Lucide](https://lucide.dev/) icons.
+
+- Icon set: Lucide
+- Package: `lucide-react-native`
+- License: ISC License
+- Usage: Navigation icons and category icons in the Moni mobile frontend
+
+## Frontend Design Resources
+
+### Font
+
+This project uses Pretendard for the Moni mobile frontend.
+
+- Font: Pretendard
+- Source: https://github.com/orioncactus/pretendard
+- License: SIL Open Font License 1.1
+- Usage: Main UI font for the React Native + Expo mobile app
+- Local file path: `frontend/mobile/assets/fonts/PretendardVariable.ttf`
+
+Font files are not redistributed separately in this documentation. Please download Pretendard from the official source.
+
+### Icons
+
+This project uses Lucide icons for navigation and category UI.
+
+- Icon set: Lucide
+- Package: `lucide-react-native`
+- Source: https://lucide.dev/
+- License: ISC License
+- Usage: Bottom navigation icons, category icons, report/action icons
+
+### Visual Direction
+
+The Moni mobile frontend uses a butter-colored glassmorphism style with soft jelly motion.
+
+Main principles:
+
+- Soft butter and neutral background colors
+- Translucent glass cards with highlight reflections
+- Rounded jelly-like surfaces
+- Short elastic motion for navigation and category selection
+- Pretendard typography
+- Cute game-like UI elements for challenge, XP, and level feedback
+
+## Frontend Design Resources
+
+### Design Direction
+
+Moni mobile frontend uses a butter-colored glassmorphism and jelly-motion style.
+
+Main principles:
+
+- Butter yellow and warm cream color palette
+- Translucent glass cards with soft reflected light
+- Rounded jelly-like surfaces
+- Short elastic motion for tab navigation and category selection
+- Game-like reward UI for challenges, XP, and level progress
+- Pretendard-based Korean typography
+- Lucide-based public icon system
+
+### Font
+
+This project uses Pretendard as the main UI font.
+
+- Font: Pretendard
+- Source: https://github.com/orioncactus/pretendard
+- License: SIL Open Font License 1.1
+- Usage: Main UI font for the React Native + Expo mobile app
+- Local path: `frontend/mobile/assets/fonts/PretendardVariable.ttf`
+
+Font files are not redistributed separately in this documentation. Download Pretendard from the official source.
+
+### Icons
+
+This project uses Lucide icons for navigation, category UI, and report/action icons.
+
+- Icon set: Lucide
+- Package: `lucide-react-native`
+- Source: https://lucide.dev/
+- License: ISC License
+- Usage:
+  - Bottom navigation icons
+  - Category icons
+  - Challenge/report/action icons
+
+### UI Components
+
+Main custom frontend components:
+
+- `AnimatedButton.tsx`
+  - Butter-colored jelly button
+  - Press animation and haptic feedback
+
+- `GlassCard.tsx`
+  - Translucent glass card
+  - Soft reflected light
+  - Entry animation on tab focus
+
+- `JellyTabBar.tsx`
+  - Custom bottom navigation
+  - Jelly indicator animation
+
+- `JellySegmentedControl.tsx`
+  - Category selector
+  - Same jelly motion as bottom tab indicator
+
+- `GlassTopHeader.tsx`
+  - Custom glass header
+  - Replaces default Expo tab header
+
+  ## AI Response Contract
+
+The Moni frontend mock data follows the AI team's modular engine output format.
+
+### AI engine entrypoint
+
+```python
+get_today_challenge(
+    transactions_df,
+    user_profile,
+    category_settings_df,
+    target_date
+)
+```
+
+### Frontend mock source
+
+```text
+frontend/mobile/constants/mockAiResult.ts
+```
+
+### Main response shape
+
+```ts
+{
+  user_id: string;
+  category_name: string;
+  challenge_date: string;
+  challenge_type: string;
+  challenge_text: string;
+  difficulty: "Easy" | "Medium" | "Medium-Hard" | "Hard";
+  status: "PENDING" | "SUCCESS" | "FAILED";
+  xp_reward: number;
+  ai_metadata: {
+    budget_limit: number;
+    predicted_monthly_spend: number;
+    month_to_date_actual: number;
+    predicted_remaining_spend: number;
+    budget_pressure: number;
+    model_used: "prophet" | "simple_average" | "no_data";
+    reason: string;
+    evaluated_categories: {
+      category_name: string;
+      model_used: "prophet" | "simple_average" | "no_data";
+      budget_limit: number;
+      predicted_monthly_spend: number;
+      budget_pressure: number;
+      is_daily_challenge: boolean;
+      rank: number | null;
+    }[];
+  };
+}
+```
+
+### Frontend display rules
+
+- Use `predicted_monthly_spend`, not `projected_30d_total`.
+- Label it as `이번 달 월말 예상 지출`.
+- Use `budget_pressure` as the main AI decision score.
+- Use `reason` as the challenge explanation.
+- Use `evaluated_categories` for report/category comparison UI.
+- Use `final_category` for AI category logic.
+- Show `mydata_category` only as original category metadata.
+- Keep budget settings inside the spending tab, not as a separate budget tab.
+
+### Related frontend files
+
+```text
+frontend/mobile/constants/mockAiResult.ts
+frontend/mobile/utils/aiFormat.ts
+frontend/mobile/app/(tabs)/report.tsx
+frontend/mobile/app/(tabs)/home.tsx
+frontend/mobile/app/(tabs)/challenge.tsx
+frontend/mobile/app/(tabs)/transactions.tsx
+```

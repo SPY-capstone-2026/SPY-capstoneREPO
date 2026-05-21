@@ -15,7 +15,7 @@ Backend integration:
     )
 """
 
-from moni_engine.engine import get_today_challenge
+from moni_engine.engine import get_today_challenges, get_today_challenge
 
-__all__ = ["get_today_challenge"]
-__version__ = "0.1.0"
+__all__ = ["get_today_challenges", "get_today_challenge"]
+__version__ = "0.2.0"
