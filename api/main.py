@@ -1,43 +1,120 @@
-from fastapi import FastAPI
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../ai'))
+
+from fastapi import FastAPI, HTTPException, Depends
 from contextlib import asynccontextmanager
 from sqlmodel import Session, select
-from models import create_db_and_tables, engine, DailyChallenge
+from models import create_db_and_tables, engine, User, DailyChallenge, Transaction, UserCategorySetting
+from auth import hash_password, verify_password, create_access_token, get_current_user_id
+from pydantic import BaseModel
+from datetime import date
+import pandas as pd
+from moni_engine.engine import get_today_challenges
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 서버 켜질 때 DB 테이블 자동 생성
     create_db_and_tables()
     yield
 
 app = FastAPI(title="Moni API 서버", lifespan=lifespan)
 
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 @app.get("/")
 def read_root():
     return {"message": "Moni 백엔드 서버가 살아있습니다! 🚀"}
 
-
-# ----------------------------------------
-# [API 1] 챌린지 생성하기 (POST /challenges)
-# ----------------------------------------
-# AI 엔진이 결과물을 뱉거나, 프론트에서 챌린지를 저장할 때 호출하는 API입니다.
-@app.post("/challenges", summary="새로운 데일리 챌린지 저장")
-def create_challenge(challenge: DailyChallenge):
-    # Session은 DB와 대화하기 위한 전화기 같은 존재입니다.
+# [API 1] 회원가입
+@app.post("/signup")
+def signup(req: SignupRequest):
     with Session(engine) as session:
-        session.add(challenge)     # 수납장에 챌린지 넣기
-        session.commit()          # 도장 쾅! 저장 확정
-        session.refresh(challenge) # DB가 자동으로 만들어준 id(Auto Increment) 반영하기
-        return {"status": "success", "data": challenge}
+        existing = session.exec(select(User).where(User.email == req.email)).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="이미 존재하는 이메일입니다")
+        user = User(
+            email=req.email,
+            password_hash=hash_password(req.password)
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return {"status": "success", "user_id": user.user_id}
 
-
-# ----------------------------------------
-# [API 2] 모든 챌린지 조회하기 (GET /challenges)
-# ----------------------------------------
-# 저장된 챌린지 히스토리를 프론트엔드 화면에 뿌려줄 때 호출하는 API입니다.
-@app.get("/challenges", summary="저장된 모든 챌린지 목록 조회")
-def get_all_challenges():
+# [API 2] 로그인
+@app.post("/login")
+def login(req: LoginRequest):
     with Session(engine) as session:
-        # DB에서 DailyChallenge 테이블의 모든 데이터를 선택(select)합니다.
-        statement = select(DailyChallenge)
-        results = session.exec(statement).all()
-        return {"status": "success", "count": len(results), "data": results}
+        user = session.exec(select(User).where(User.email == req.email)).first()
+        if not user or not verify_password(req.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 틀렸습니다")
+        token = create_access_token(user.user_id)
+        return {"access_token": token, "token_type": "bearer"}
+
+# [API 3] 내 정보 조회
+@app.get("/me")
+def get_me(user_id: str = Depends(get_current_user_id)):
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+        return {"user_id": user.user_id, "email": user.email}
+
+# [API 4] 오늘의 챌린지 생성
+@app.post("/challenges/generate")
+def generate_challenges(user_id: str = Depends(get_current_user_id)):
+    with Session(engine) as session:
+        # 유저 정보 조회
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+        # 트랜잭션 조회
+        transactions = session.exec(
+            select(Transaction).where(Transaction.user_id == user_id)
+        ).all()
+
+        # 카테고리 설정 조회
+        category_settings = session.exec(
+            select(UserCategorySetting).where(UserCategorySetting.user_id == user_id)
+        ).all()
+
+        if not category_settings:
+            raise HTTPException(status_code=400, detail="카테고리 설정이 없습니다")
+
+        # DataFrame 변환
+        transactions_df = pd.DataFrame([t.model_dump() for t in transactions])
+        category_settings_df = pd.DataFrame([c.model_dump() for c in category_settings])
+
+        # Prophet 엔진 실행
+        user_profile = user.model_dump()
+        challenges = get_today_challenges(
+            transactions_df=transactions_df,
+            user_profile=user_profile,
+            category_settings_df=category_settings_df,
+            target_date=date.today(),
+        )
+
+        if not challenges:
+            return {"status": "success", "count": 0, "data": []}
+
+        # DB에 저장
+        saved = []
+        for c in challenges:
+            if isinstance(c.get('challenge_date'), str):
+                c['challenge_date'] = date.fromisoformat(c['challenge_date'])
+            challenge = DailyChallenge(**c)
+            session.add(challenge)
+            session.commit()
+            session.refresh(challenge)
+            saved.append(challenge)
+
+        return {"status": "success", "count": len(saved), "data": saved}
+    
