@@ -31,7 +31,7 @@ from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from moni_engine.preprocessing import _coerce_date
+from api.ai.moni_engine.preprocessing import _coerce_date
 
 
 # Prophet의 로그/경고가 시끄러우므로 끈다

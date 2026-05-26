@@ -1,7 +1,6 @@
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../ai'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'ai'))
 
 from fastapi import FastAPI, HTTPException, Depends
 from contextlib import asynccontextmanager
