@@ -29,18 +29,18 @@ from typing import List, Optional
 
 import pandas as pd
 
-from api.ai.moni_engine.preprocessing import (
+from moni_engine.preprocessing import (
     _coerce_date,
     make_daily_series,
     get_month_to_date_actual,
     has_category_correction,
     compute_no_spend_streak,
 )
-from api.ai.moni_engine.prediction import (
+from moni_engine.prediction import (
     predict_monthly_spend,
     calculate_budget_pressure,
 )
-from api.ai.moni_engine.challenge import (
+from moni_engine.challenge import (
     generate_challenge,
     generate_streak_challenge,
     streak_qualifies,
