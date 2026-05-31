@@ -9,9 +9,9 @@ from datetime import datetime, date, time
 
 create_db_and_tables()
 
-users_df = pd.read_csv('../ai/seed_data/seed_users.csv')
-transactions_df = pd.read_csv('../ai/seed_data/seed_transactions.csv')
-categories_df = pd.read_csv('../ai/seed_data/seed_category_settings.csv')
+users_df = pd.read_csv('ai/seed_data/seed_users.csv')
+transactions_df = pd.read_csv('ai/seed_data/seed_transactions.csv')
+categories_df = pd.read_csv('ai/seed_data/seed_category_settings.csv')
 
 with Session(engine) as session:
     # 유저 삽입
