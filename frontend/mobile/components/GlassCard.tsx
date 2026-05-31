@@ -3,9 +3,9 @@ import {
   Animated,
   StyleProp,
   StyleSheet,
+  View,
   ViewStyle,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { colors } from '@/constants/colors';
@@ -66,9 +66,7 @@ export function GlassCard({
         },
       ]}
     >
-      <BlurView intensity={32} tint="light" style={[styles.card, toneStyle, style]}>
-        {children}
-      </BlurView>
+      <View style={[styles.card, toneStyle, style]}>{children}</View>
     </Animated.View>
   );
 }
@@ -83,19 +81,18 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   card: {
-    overflow: 'hidden',
     borderRadius: 28,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)',
+    borderColor: 'rgba(255,255,255,0.46)',
   },
   white: {
-    backgroundColor: 'rgba(255,255,255,0.38)',
+    backgroundColor: 'rgba(255,255,255,0.42)',
   },
   butter: {
-    backgroundColor: 'rgba(255,248,216,0.42)',
+    backgroundColor: 'rgba(255,248,216,0.46)',
   },
   soft: {
-    backgroundColor: 'rgba(255,251,240,0.36)',
+    backgroundColor: 'rgba(255,251,240,0.42)',
   },
 });

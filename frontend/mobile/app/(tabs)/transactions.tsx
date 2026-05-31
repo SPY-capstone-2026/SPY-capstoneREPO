@@ -36,6 +36,7 @@ import {
   mockTodayChallenge,
   mockTransactions,
 } from '@/constants/mockAiResult';
+import type { CategorySetting, Transaction } from '@/constants/mockTypes';
 import { useToast } from '@/contexts/ToastContext';
 import { formatWon, sortEvaluatedCategories } from '@/utils/aiFormat';
 import {
@@ -47,7 +48,6 @@ import {
   getFriendlyBudgetMessage,
 } from '@/utils/budgetStatus';
 import { getCategoryMeta } from '@/utils/categoryMeta';
-import type { CategorySetting, Transaction } from '@/constants/mockTypes';
 
 const importedTransactions: Transaction[] = [
   {
@@ -98,6 +98,7 @@ export default function TransactionsScreen() {
 
   const [transactions, setTransactions] =
     useState<Transaction[]>(mockTransactions);
+
   const [categories, setCategories] =
     useState<CategorySetting[]>(mockCategorySettings);
 
@@ -121,17 +122,8 @@ export default function TransactionsScreen() {
     (item) => item.category_name === selectedCategory.category_name
   );
 
-  const selectedTransactions = useMemo(
-    () =>
-      transactions.filter(
-        (transaction) =>
-          transaction.final_category === selectedCategory.category_name
-      ),
-    [selectedCategory.category_name, transactions]
-  );
-
   const recentTransactions = useMemo(
-    () => transactions.slice(0, 4),
+    () => transactions.slice(0, 6),
     [transactions]
   );
 
@@ -141,8 +133,14 @@ export default function TransactionsScreen() {
   );
 
   const selectedActualSpend = useMemo(
-    () => selectedTransactions.reduce((sum, item) => sum + item.amount, 0),
-    [selectedTransactions]
+    () =>
+      transactions
+        .filter(
+          (transaction) =>
+            transaction.final_category === selectedCategory.category_name
+        )
+        .reduce((sum, item) => sum + item.amount, 0),
+    [selectedCategory.category_name, transactions]
   );
 
   const missionCategoryCount = useMemo(
@@ -232,7 +230,7 @@ export default function TransactionsScreen() {
       const newTransaction: Transaction = {
         tx_id: `manual-${Date.now()}`,
         user_id: selectedCategory.user_id,
-        tx_date: '2026-05-18',
+        tx_date: mission.challenge_date,
         tx_time: '오늘',
         amount: numericAmount,
         merchant_name: merchant.trim(),
@@ -315,11 +313,7 @@ export default function TransactionsScreen() {
     );
   };
 
-  const renderTransactionCard = (
-    transaction: Transaction,
-    delay: number,
-    showOriginalCategory = false
-  ) => {
+  const renderTransactionCard = (transaction: Transaction, delay: number) => {
     const transactionMeta = getCategoryMeta(transaction.final_category);
     const TransactionIcon = transactionMeta.Icon;
 
@@ -345,9 +339,7 @@ export default function TransactionsScreen() {
 
             <View style={styles.badgeRow}>
               <Text style={styles.categoryBadge}>
-                {showOriginalCategory
-                  ? `Moni 분류 · ${transaction.final_category}`
-                  : transaction.final_category}
+                {transaction.final_category}
               </Text>
 
               {transaction.is_user_corrected ? (
@@ -356,12 +348,6 @@ export default function TransactionsScreen() {
                 <Text style={styles.rawBadge}>기본 분류</Text>
               )}
             </View>
-
-            {showOriginalCategory ? (
-              <Text style={styles.categoryMeta}>
-                원래 분류: {transaction.mydata_category}
-              </Text>
-            ) : null}
 
             <View style={styles.transactionActionRow}>
               <Pressable
@@ -408,8 +394,8 @@ export default function TransactionsScreen() {
       >
         <AppScreenHeader
           label="SPENDING"
-          title="지출을 기록하고 예산 흐름을 확인하세요."
-          description="방금 쓴 돈을 바로 기록하고, 항목별 예산 상태를 한눈에 볼 수 있습니다."
+          title="지출을 빠르게 기록하고 확인하세요."
+          description="가장 자주 쓰는 지출 추가와 최근 내역을 먼저 보여드립니다."
           Icon={ReceiptText}
         />
 
@@ -433,7 +419,7 @@ export default function TransactionsScreen() {
 
               <View style={styles.actionTextBox}>
                 <Text style={styles.actionTitle}>지출 추가</Text>
-                <Text style={styles.actionDescription}>방금 쓴 돈 기록하기</Text>
+                <Text style={styles.actionDescription}>방금 쓴 돈 기록</Text>
               </View>
             </Pressable>
 
@@ -456,17 +442,15 @@ export default function TransactionsScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.summaryChipRow}>
-            <View style={styles.summaryChip}>
-              <ReceiptText size={14} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.summaryChipText}>
-                {transactions.length}건 기록
-              </Text>
+          <View style={styles.summaryLine}>
+            <View style={styles.summaryItem}>
+              <ReceiptText size={15} color={colors.butterBrown} strokeWidth={2.8} />
+              <Text style={styles.summaryText}>{transactions.length}건 기록</Text>
             </View>
 
-            <View style={styles.summaryChip}>
-              <Target size={14} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.summaryChipText}>
+            <View style={styles.summaryItem}>
+              <Target size={15} color={colors.butterBrown} strokeWidth={2.8} />
+              <Text style={styles.summaryText}>
                 미션 포함 {missionCategoryCount}개
               </Text>
             </View>
@@ -476,7 +460,7 @@ export default function TransactionsScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>최근 지출</Text>
           <Text style={styles.sectionSubtitle}>
-            가장 최근에 기록된 지출입니다. 잘못된 항목은 바로 수정할 수 있습니다.
+            최근 내역만 보여드립니다. 잘못된 항목은 바로 수정할 수 있습니다.
           </Text>
         </View>
 
@@ -484,7 +468,7 @@ export default function TransactionsScreen() {
           <GlassCard delay={160} tone="soft">
             <EmptyState
               title="아직 지출 기록이 없어요."
-              description="오늘 쓴 돈을 하나만 기록해보세요. 리포트와 미션이 더 정확해집니다."
+              description="오늘 쓴 돈을 하나만 기록해도 리포트와 미션이 더 정확해집니다."
               actionLabel="지출 추가하기"
               onAction={openAddModal}
               Icon={PencilLine}
@@ -492,14 +476,14 @@ export default function TransactionsScreen() {
           </GlassCard>
         ) : (
           recentTransactions.map((transaction, index) =>
-            renderTransactionCard(transaction, 160 + index * 55)
+            renderTransactionCard(transaction, 160 + index * 50)
           )
         )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>항목별 예산 상태</Text>
           <Text style={styles.sectionSubtitle}>
-            자주 관리할 항목을 선택해 예산 흐름을 확인하세요.
+            확인할 항목을 선택하면 예산 흐름만 간단히 보여드립니다.
           </Text>
         </View>
 
@@ -509,7 +493,7 @@ export default function TransactionsScreen() {
           onChange={handleSelectCategory}
         />
 
-        <GlassCard delay={380} tone="butter" style={styles.categoryCard}>
+        <GlassCard delay={420} tone="butter" style={styles.categoryCard}>
           <View style={styles.categoryTopRow}>
             <View style={styles.categoryIconBubble}>
               <SelectedCategoryIcon
@@ -550,22 +534,27 @@ export default function TransactionsScreen() {
             </View>
           </View>
 
-          <Text style={styles.categoryStatusText}>
-            {getFriendlyBudgetMessage(selectedPressure)}
-          </Text>
-
-          <View style={styles.budgetInfoBox}>
-            <View>
-              <Text style={styles.infoLabel}>월 예산</Text>
-              <Text style={styles.budgetValue}>
+          <View style={styles.categoryMetricList}>
+            <View style={styles.categoryMetricItem}>
+              <Text style={styles.metricLabel}>월 예산</Text>
+              <Text style={styles.metricValue}>
                 {formatWon(selectedCategory.budget_limit)}
               </Text>
             </View>
 
-            <View style={styles.rightInfo}>
-              <Text style={styles.infoLabel}>기록된 지출</Text>
-              <Text style={styles.currentSpendValue}>
+            <View style={styles.categoryMetricItem}>
+              <Text style={styles.metricLabel}>기록된 지출</Text>
+              <Text style={styles.metricValue}>
                 {formatWon(selectedActualSpend)}
+              </Text>
+            </View>
+
+            <View style={styles.categoryMetricItem}>
+              <Text style={styles.metricLabel}>월말 예상</Text>
+              <Text style={styles.metricValue}>
+                {selectedEvaluation
+                  ? formatWon(selectedEvaluation.predicted_monthly_spend)
+                  : '기록 부족'}
               </Text>
             </View>
           </View>
@@ -589,22 +578,15 @@ export default function TransactionsScreen() {
             tone={selectedPressureTone}
           />
 
-          <View style={styles.predictionBox}>
-            <Text style={styles.predictionTitle}>월말 예상</Text>
-            <Text style={styles.predictionText}>
-              {selectedEvaluation
-                ? `${formatWon(
-                    selectedEvaluation.predicted_monthly_spend
-                  )} 정도 사용할 것으로 보여요.`
-                : '아직 예상할 만큼의 기록이 충분하지 않습니다.'}
-            </Text>
-          </View>
+          <Text style={styles.categoryStatusText}>
+            {getFriendlyBudgetMessage(selectedPressure)}
+          </Text>
 
           <View style={styles.challengeSwitchBox}>
             <View style={styles.switchTextBox}>
               <Text style={styles.switchTitle}>오늘의 미션에 포함</Text>
               <Text style={styles.switchDescription}>
-                줄이고 싶은 항목이라면 켜두세요. 꺼두어도 예산 관리는 계속됩니다.
+                줄이고 싶은 항목이라면 켜두세요.
               </Text>
             </View>
 
@@ -623,31 +605,6 @@ export default function TransactionsScreen() {
             />
           </View>
         </GlassCard>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            {selectedCategory.category_name} 지출만 보기
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            선택한 항목에 해당하는 지출입니다.
-          </Text>
-        </View>
-
-        {selectedTransactions.length === 0 ? (
-          <GlassCard delay={460} tone="soft">
-            <EmptyState
-              title={`${selectedCategory.category_name} 기록이 없어요.`}
-              description="이 항목의 지출을 추가하면 예산 상태를 더 정확하게 확인할 수 있습니다."
-              actionLabel="지출 추가하기"
-              onAction={openAddModal}
-              Icon={SelectedCategoryIcon}
-            />
-          </GlassCard>
-        ) : (
-          selectedTransactions.map((transaction, index) =>
-            renderTransactionCard(transaction, 460 + index * 50, true)
-          )
-        )}
       </ScrollView>
 
       <Modal
@@ -664,7 +621,7 @@ export default function TransactionsScreen() {
                   {editingTransactionId ? '지출 수정' : '지출 추가'}
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  결제처, 금액, 항목을 입력해 주세요.
+                  결제처, 금액, 항목만 입력하면 됩니다.
                 </Text>
               </View>
 
@@ -756,7 +713,7 @@ const styles = StyleSheet.create({
     width: 230,
     height: 230,
     borderRadius: 999,
-    backgroundColor: 'rgba(242, 201, 76, 0.30)',
+    backgroundColor: 'rgba(242, 201, 76, 0.28)',
   },
   backgroundOrbSmall: {
     position: 'absolute',
@@ -765,7 +722,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.58)',
   },
   backgroundOrbTiny: {
     position: 'absolute',
@@ -774,14 +731,14 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 240, 184, 0.46)',
+    backgroundColor: 'rgba(255, 240, 184, 0.38)',
   },
   container: {
     padding: 20,
     paddingBottom: 128,
   },
   actionCard: {
-    backgroundColor: colors.butterCard,
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
   actionTopRow: {
     flexDirection: 'row',
@@ -811,11 +768,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.butterStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
   },
   actionButtonRow: {
     gap: 10,
@@ -836,9 +788,9 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: 15,
     paddingVertical: 14,
-    backgroundColor: colors.whiteCard,
+    backgroundColor: 'rgba(255,255,255,0.28)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255,255,255,0.34)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -847,7 +799,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.56)',
+    backgroundColor: 'rgba(255,255,255,0.38)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -866,30 +818,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.subText,
   },
-  summaryChipRow: {
+  summaryLine: {
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
-    gap: 8,
+    gap: 14,
     flexWrap: 'wrap',
   },
-  summaryChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  summaryItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-  summaryChipText: {
+  summaryText: {
     fontFamily: typography.fontFamily,
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '900',
     color: colors.butterBrown,
   },
   sectionHeader: {
-    marginTop: 10,
+    marginTop: 8,
     marginBottom: 12,
   },
   sectionTitle: {
@@ -977,18 +926,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
     color: colors.subText,
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
     overflow: 'hidden',
-  },
-  categoryMeta: {
-    marginTop: 8,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    color: colors.mutedText,
   },
   transactionActionRow: {
     flexDirection: 'row',
@@ -999,9 +942,9 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 999,
     paddingHorizontal: 11,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
+    backgroundColor: 'rgba(255, 247, 214, 0.34)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255,255,255,0.28)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -1017,13 +960,13 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     marginTop: 16,
-    backgroundColor: colors.butterCard,
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
   categoryTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   categoryIconBubble: {
     width: 62,
@@ -1032,11 +975,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.butterStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
   },
   categoryTitleBox: {
     flex: 1,
@@ -1065,45 +1003,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  categoryStatusText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-    marginBottom: 16,
+  categoryMetricList: {
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
+    gap: 9,
+    marginBottom: 14,
   },
-  budgetInfoBox: {
-    padding: 16,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  categoryMetricItem: {
+    minHeight: 42,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 16,
   },
-  infoLabel: {
+  metricLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
-    fontWeight: '800',
     color: colors.subText,
-    marginBottom: 5,
   },
-  budgetValue: {
+  metricValue: {
     fontFamily: typography.fontFamily,
-    fontSize: 22,
+    fontSize: 14,
     fontWeight: '900',
     color: colors.text,
-  },
-  rightInfo: {
-    alignItems: 'flex-end',
-  },
-  currentSpendValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 18,
-    fontWeight: '900',
-    color: colors.butterDeep,
   },
   progressInfoRow: {
     flexDirection: 'row',
@@ -1124,34 +1046,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  predictionBox: {
-    marginTop: 14,
-    padding: 14,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  predictionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.butterBrown,
-    marginBottom: 5,
-  },
-  predictionText: {
+  categoryStatusText: {
+    marginTop: 12,
     fontFamily: typography.fontFamily,
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
     color: colors.subText,
   },
   challengeSwitchBox: {
     marginTop: 14,
-    padding: 15,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 247, 214, 0.68)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
@@ -1181,7 +1087,7 @@ const styles = StyleSheet.create({
   modalCard: {
     padding: 22,
     borderRadius: 30,
-    backgroundColor: 'rgba(255, 251, 240, 0.98)',
+    backgroundColor: '#FFFBF0',
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },

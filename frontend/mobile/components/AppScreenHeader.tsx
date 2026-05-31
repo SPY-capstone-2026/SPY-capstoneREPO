@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { LucideIcon, Sparkles } from 'lucide-react-native';
 
 import { colors } from '@/constants/colors';
@@ -25,10 +25,21 @@ export function AppScreenHeader({
 }: AppScreenHeaderProps) {
   return (
     <View style={[styles.container, style]}>
-      <BlurView intensity={30} tint="light" style={styles.card}>
+      <LinearGradient
+        colors={[
+          'rgba(255, 248, 216, 0.64)',
+          'rgba(255, 255, 255, 0.46)',
+          'rgba(255, 244, 199, 0.42)',
+        ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.card}
+      >
+        <View style={styles.softLight} />
+
         <View style={styles.topRow}>
-          <View style={styles.labelPill}>
-            <Icon size={14} color={colors.butterBrown} strokeWidth={2.8} />
+          <View style={styles.labelRow}>
+            <Icon size={15} color={colors.butterBrown} strokeWidth={2.8} />
             <Text style={styles.label}>{label}</Text>
           </View>
 
@@ -40,7 +51,7 @@ export function AppScreenHeader({
         {description ? (
           <Text style={styles.description}>{description}</Text>
         ) : null}
-      </BlurView>
+      </LinearGradient>
     </View>
   );
 }
@@ -48,23 +59,33 @@ export function AppScreenHeader({
 const styles = StyleSheet.create({
   container: {
     marginBottom: 18,
-  },
-  card: {
-    overflow: 'hidden',
-    borderRadius: 30,
-    padding: 20,
-    minHeight: 148,
-    backgroundColor: 'rgba(255, 248, 216, 0.38)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)',
     shadowColor: colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
+    shadowOpacity: 0.09,
+    shadowRadius: 20,
     shadowOffset: {
       width: 0,
       height: 10,
     },
     elevation: 4,
+  },
+  card: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    minHeight: 144,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.48)',
+  },
+  softLight: {
+    position: 'absolute',
+    top: 10,
+    left: 18,
+    width: 92,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.20)',
   },
   topRow: {
     flexDirection: 'row',
@@ -73,24 +94,18 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 15,
   },
-  labelPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.36)',
+  labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: 'transparent',
   },
   label: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
     color: colors.butterBrown,
-    letterSpacing: -0.1,
+    letterSpacing: 0.8,
   },
   title: {
     maxWidth: 320,

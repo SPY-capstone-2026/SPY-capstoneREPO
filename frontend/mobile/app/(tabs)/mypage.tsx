@@ -21,49 +21,37 @@ import {
   Trophy,
   UserRound,
 } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
+import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import {
   mockCategorySettings,
-  mockTodayChallenge,
   mockUserProfile,
 } from '@/constants/mockAiResult';
 import { useMission } from '@/contexts/MissionContext';
 import { useToast } from '@/contexts/ToastContext';
-import { formatWon, sortEvaluatedCategories } from '@/utils/aiFormat';
-import {
-  getBudgetBg,
-  getBudgetColor,
-  getBudgetLabel,
-  getBudgetSignalText,
-  getBudgetTone,
-} from '@/utils/budgetStatus';
-import { getCategoryMeta } from '@/utils/categoryMeta';
 
 function getIncomeTypeLabel(incomeType: string) {
   if (incomeType === 'STUDENT') return '학생';
   if (incomeType === 'EMPLOYEE') return '직장인';
-  return incomeType;
+  if (incomeType === 'FREELANCER') return '프리랜서';
+  return '기타';
 }
 
 function getSpendProfileLabel(profile: string) {
   if (profile === 'STEADY') return '안정형';
   if (profile === 'IMPULSIVE') return '즉흥 소비형';
   if (profile === 'CYCLICAL') return '주기 소비형';
-  if (profile === 'balanced') return '균형형';
-  if (profile === 'careful') return '절약형';
-  if (profile === 'overspend') return '관리 필요형';
-  if (profile === 'custom') return '직접 설정';
-  return profile;
+  return '맞춤형';
 }
 
 function getProfileMessage(profile: string) {
   if (profile === 'IMPULSIVE') {
-    return '작은 미션으로 충동 소비를 천천히 줄여볼 수 있어요.';
+    return '작은 미션으로 갑작스러운 소비를 천천히 줄여볼 수 있어요.';
   }
 
   if (profile === 'CYCLICAL') {
@@ -79,12 +67,13 @@ function getProfileMessage(profile: string) {
 
 export default function MyPageScreen() {
   const user = mockUserProfile;
-  const mission = mockTodayChallenge;
   const { showToast } = useToast();
 
   const {
     currentXp,
     currentLevel,
+    currentStreak,
+    weeklyCompletedCount,
     isTodayMissionCompleted,
   } = useMission();
 
@@ -92,34 +81,12 @@ export default function MyPageScreen() {
   const [missionReminderEnabled, setMissionReminderEnabled] = useState(true);
   const [budgetAlertEnabled, setBudgetAlertEnabled] = useState(true);
 
-  const evaluatedCategories = sortEvaluatedCategories(
-    mission.ai_metadata.evaluated_categories
-  );
-
-  const missionCategoryCount = useMemo(
-    () => mockCategorySettings.filter((item) => item.is_daily_challenge).length,
-    []
-  );
-
   const levelGoal = 200;
   const levelProgress = Math.min(currentXp / levelGoal, 1);
 
-  const topCategory =
-    evaluatedCategories[0] ?? {
-      category_name: mission.category_name,
-      budget_pressure: mission.ai_metadata.budget_pressure,
-      budget_limit: mission.ai_metadata.budget_limit,
-      predicted_monthly_spend: mission.ai_metadata.predicted_monthly_spend,
-      rank: 1,
-    };
-
-  const topCategoryMeta = getCategoryMeta(topCategory.category_name);
-  const TopCategoryIcon = topCategoryMeta.Icon;
-
-  const topCategoryTone = getBudgetTone(topCategory.budget_pressure);
-  const topCategoryColor = getBudgetColor(topCategory.budget_pressure);
-  const topCategoryBg = getBudgetBg(topCategory.budget_pressure);
-  const topCategoryLabel = getBudgetLabel(topCategory.budget_pressure);
+  const missionCategoryCount = mockCategorySettings.filter(
+    (item) => item.is_daily_challenge
+  ).length;
 
   const handleTogglePush = (value: boolean) => {
     setPushEnabled(value);
@@ -149,18 +116,16 @@ export default function MyPageScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.headerLabel}>MY</Text>
-          <Text style={styles.title}>내 소비 습관을 관리해요.</Text>
-          <Text style={styles.subtitle}>
-            프로필, 미션, 예산 알림을 한곳에서 확인할 수 있습니다.
-          </Text>
-        </View>
+        <AppScreenHeader
+          label="MY"
+          title="내 소비 습관과 설정을 관리해요."
+          description="프로필, 미션 성장 상태, 알림 설정을 한곳에서 확인할 수 있습니다."
+          Icon={UserRound}
+        />
 
         <GlassCard delay={80} tone="butter" style={styles.profileCard}>
           <View style={styles.profileTopRow}>
             <View style={styles.avatarBubble}>
-              <View style={styles.avatarHighlight} />
               <UserRound size={32} color={colors.text} strokeWidth={2.8} />
             </View>
 
@@ -170,8 +135,8 @@ export default function MyPageScreen() {
               <Text style={styles.profileEmail}>{user.email}</Text>
             </View>
 
-            <View style={styles.profileBadge}>
-              <Text style={styles.profileBadgeText}>Lv. {currentLevel}</Text>
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelBadgeText}>Lv. {currentLevel}</Text>
             </View>
           </View>
 
@@ -179,7 +144,7 @@ export default function MyPageScreen() {
             {getProfileMessage(user.spend_profile)}
           </Text>
 
-          <View style={styles.profileInfoGrid}>
+          <View style={styles.profileInfoRow}>
             <View style={styles.profileInfoItem}>
               <Text style={styles.profileInfoLabel}>유형</Text>
               <Text style={styles.profileInfoValue}>
@@ -203,15 +168,17 @@ export default function MyPageScreen() {
 
         <GlassCard delay={160} style={styles.growthCard}>
           <View style={styles.sectionTitleRow}>
-            <Trophy size={19} color={colors.butterDeep} strokeWidth={2.8} />
+            <Trophy size={18} color={colors.butterDeep} strokeWidth={2.8} />
             <Text style={styles.sectionTitle}>성장 상태</Text>
           </View>
 
-          <View style={styles.growthTopRow}>
+          <View style={styles.growthMainRow}>
             <View>
               <Text style={styles.growthLevel}>Lv. {currentLevel}</Text>
               <Text style={styles.growthDescription}>
-                미션을 완료할수록 XP가 쌓입니다.
+                {currentXp >= levelGoal
+                  ? '새로운 레벨에 도달했어요.'
+                  : `다음 레벨까지 ${levelGoal - currentXp} XP 남았습니다.`}
               </Text>
             </View>
 
@@ -221,47 +188,34 @@ export default function MyPageScreen() {
             </View>
           </View>
 
-          <View style={styles.progressRow}>
-            <Text style={styles.progressLabel}>다음 레벨까지</Text>
-            <Text style={styles.progressValue}>
-              {currentXp >= levelGoal
-                ? '새로운 레벨에 도달했어요'
-                : `${levelGoal - currentXp} XP 남음`}
-            </Text>
-          </View>
-
           <AnimatedProgressBar progress={levelProgress} tone="warning" />
 
-          <View
-            style={[
-              styles.missionStatusBox,
-              isTodayMissionCompleted && styles.completedMissionStatusBox,
-            ]}
-          >
-            <Target
-              size={16}
-              color={
-                isTodayMissionCompleted ? colors.successText : colors.butterDeep
-              }
-              strokeWidth={2.8}
-            />
-            <Text
-              style={[
-                styles.missionStatusText,
-                isTodayMissionCompleted && styles.completedMissionStatusText,
-              ]}
-            >
-              {isTodayMissionCompleted
-                ? '오늘의 미션을 완료했어요.'
-                : '오늘의 미션을 완료하면 XP가 쌓입니다.'}
-            </Text>
+          <View style={styles.growthStatsRow}>
+            <View style={styles.growthStatItem}>
+              <Text style={styles.growthStatLabel}>연속 성공</Text>
+              <Text style={styles.growthStatValue}>{currentStreak}일</Text>
+            </View>
+
+            <View style={styles.growthStatItem}>
+              <Text style={styles.growthStatLabel}>이번 주 완료</Text>
+              <Text style={styles.growthStatValue}>
+                {weeklyCompletedCount}개
+              </Text>
+            </View>
+
+            <View style={styles.growthStatItem}>
+              <Text style={styles.growthStatLabel}>오늘 미션</Text>
+              <Text style={styles.growthStatValue}>
+                {isTodayMissionCompleted ? '완료' : '진행 중'}
+              </Text>
+            </View>
           </View>
         </GlassCard>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>자주 쓰는 설정</Text>
+          <Text style={styles.sectionTitle}>자주 쓰는 메뉴</Text>
           <Text style={styles.sectionSubtitle}>
-            예산과 미션 기준을 빠르게 확인할 수 있습니다.
+            자주 확인하는 기능만 먼저 모았습니다.
           </Text>
         </View>
 
@@ -274,9 +228,9 @@ export default function MyPageScreen() {
           </View>
 
           <View style={styles.shortcutTextBox}>
-            <Text style={styles.shortcutTitle}>예산과 지출 관리</Text>
+            <Text style={styles.shortcutTitle}>지출과 예산 관리</Text>
             <Text style={styles.shortcutDescription}>
-              지출 추가, 카드 내역, 항목별 예산을 확인합니다.
+              지출 추가, 최근 내역, 항목별 예산을 확인합니다.
             </Text>
           </View>
 
@@ -292,7 +246,7 @@ export default function MyPageScreen() {
           </View>
 
           <View style={styles.shortcutTextBox}>
-            <Text style={styles.shortcutTitle}>오늘의 미션 확인</Text>
+            <Text style={styles.shortcutTitle}>오늘의 미션</Text>
             <Text style={styles.shortcutDescription}>
               오늘 완료할 소비 미션과 보상을 확인합니다.
             </Text>
@@ -301,70 +255,9 @@ export default function MyPageScreen() {
           <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
         </Pressable>
 
-        <GlassCard delay={260} tone="butter" style={styles.budgetSignalCard}>
-          <View style={styles.signalTopRow}>
-            <View style={styles.signalIconBubble}>
-              <TopCategoryIcon size={24} color={colors.text} strokeWidth={2.8} />
-            </View>
-
-            <View style={styles.signalTextBox}>
-              <Text style={styles.cardLabel}>가장 신경 쓸 항목</Text>
-              <Text style={styles.signalTitle}>{topCategory.category_name}</Text>
-              <Text style={styles.signalDescription}>
-                {getBudgetSignalText(topCategory.budget_pressure)}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.signalBadge,
-                {
-                  backgroundColor: topCategoryBg,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.signalBadgeText,
-                  {
-                    color: topCategoryColor,
-                  },
-                ]}
-              >
-                {topCategoryLabel}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.signalAmountRow}>
-            <View>
-              <Text style={styles.amountLabel}>월 예산</Text>
-              <Text style={styles.amountValue}>
-                {formatWon(topCategory.budget_limit)}
-              </Text>
-            </View>
-
-            <View style={styles.amountRight}>
-              <Text style={styles.amountLabel}>월말 예상</Text>
-              <Text style={styles.amountValue}>
-                {formatWon(topCategory.predicted_monthly_spend)}
-              </Text>
-            </View>
-          </View>
-
-          <AnimatedProgressBar
-            progress={topCategory.budget_pressure}
-            tone={topCategoryTone}
-          />
-
-          <Text style={styles.signalHint}>
-            이 항목은 이번 달 예산 관리에서 가장 먼저 확인하면 좋은 항목입니다.
-          </Text>
-        </GlassCard>
-
-        <GlassCard delay={340} style={styles.appSettingCard}>
+        <GlassCard delay={260} style={styles.settingCard}>
           <View style={styles.sectionTitleRow}>
-            <Settings size={19} color={colors.butterDeep} strokeWidth={2.8} />
+            <Settings size={18} color={colors.butterDeep} strokeWidth={2.8} />
             <Text style={styles.sectionTitle}>앱 설정</Text>
           </View>
 
@@ -378,7 +271,7 @@ export default function MyPageScreen() {
                 <View style={styles.settingTextBox}>
                   <Text style={styles.settingTitle}>알림 받기</Text>
                   <Text style={styles.settingDescription}>
-                    중요한 예산 알림을 받아볼게요.
+                    중요한 알림을 받아볼게요.
                   </Text>
                 </View>
               </View>
@@ -448,9 +341,9 @@ export default function MyPageScreen() {
           </View>
         </GlassCard>
 
-        <GlassCard delay={420} style={styles.accountCard}>
+        <GlassCard delay={340} style={styles.accountCard}>
           <View style={styles.sectionTitleRow}>
-            <ShieldCheck size={19} color={colors.butterDeep} strokeWidth={2.8} />
+            <ShieldCheck size={18} color={colors.butterDeep} strokeWidth={2.8} />
             <Text style={styles.sectionTitle}>계정</Text>
           </View>
 
@@ -476,15 +369,11 @@ export default function MyPageScreen() {
             <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
           </Pressable>
 
-          <View style={styles.accountSummaryBox}>
-            <View>
-              <Text style={styles.accountSummaryLabel}>미션에 사용하는 항목</Text>
-              <Text style={styles.accountSummaryValue}>
-                {missionCategoryCount}개 항목
-              </Text>
-            </View>
-
-            <Target size={21} color={colors.butterBrown} strokeWidth={2.8} />
+          <View style={styles.accountSummaryLine}>
+            <Target size={16} color={colors.butterBrown} strokeWidth={2.8} />
+            <Text style={styles.accountSummaryText}>
+              현재 {missionCategoryCount}개 항목이 미션에 사용됩니다.
+            </Text>
           </View>
 
           <Pressable
@@ -511,7 +400,7 @@ const styles = StyleSheet.create({
     width: 230,
     height: 230,
     borderRadius: 999,
-    backgroundColor: 'rgba(242, 201, 76, 0.30)',
+    backgroundColor: 'rgba(242, 201, 76, 0.28)',
   },
   backgroundOrbSmall: {
     position: 'absolute',
@@ -520,7 +409,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.58)',
   },
   backgroundOrbTiny: {
     position: 'absolute',
@@ -529,47 +418,14 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 240, 184, 0.46)',
+    backgroundColor: 'rgba(255, 240, 184, 0.38)',
   },
   container: {
     padding: 20,
     paddingBottom: 128,
   },
-  header: {
-    marginBottom: 22,
-  },
-  headerLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.butterDeep,
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  title: {
-    fontFamily: typography.fontFamily,
-    fontSize: 30,
-    lineHeight: 38,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.7,
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.subText,
-  },
-  cardLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 6,
-  },
   profileCard: {
-    backgroundColor: colors.butterCard,
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
   profileTopRow: {
     flexDirection: 'row',
@@ -578,30 +434,22 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   avatarBubble: {
-    width: 68,
-    height: 68,
-    borderRadius: 27,
+    width: 66,
+    height: 66,
+    borderRadius: 26,
     backgroundColor: colors.butterStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
-  },
-  avatarHighlight: {
-    position: 'absolute',
-    top: 10,
-    left: 14,
-    width: 28,
-    height: 13,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.30)',
   },
   profileTextBox: {
     flex: 1,
+  },
+  cardLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.subText,
+    marginBottom: 6,
   },
   profileName: {
     fontFamily: typography.fontFamily,
@@ -616,15 +464,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.subText,
   },
-  profileBadge: {
-    paddingHorizontal: 12,
+  levelBadge: {
+    paddingHorizontal: 11,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.62)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+    backgroundColor: colors.butterPale,
   },
-  profileBadgeText: {
+  levelBadgeText: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
     fontWeight: '900',
@@ -637,19 +483,15 @@ const styles = StyleSheet.create({
     color: colors.subText,
     marginBottom: 16,
   },
-  profileInfoGrid: {
+  profileInfoRow: {
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
-    gap: 8,
+    gap: 14,
   },
   profileInfoItem: {
     flex: 1,
-    minHeight: 76,
-    borderRadius: 22,
-    padding: 12,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    justifyContent: 'center',
   },
   profileInfoLabel: {
     fontFamily: typography.fontFamily,
@@ -660,12 +502,12 @@ const styles = StyleSheet.create({
   },
   profileInfoValue: {
     fontFamily: typography.fontFamily,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     color: colors.text,
   },
   growthCard: {
-    backgroundColor: colors.whiteCard,
+    backgroundColor: 'rgba(255,255,255,0.36)',
   },
   sectionTitleRow: {
     flexDirection: 'row',
@@ -680,10 +522,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 5,
   },
-  growthTopRow: {
+  growthMainRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 14,
     alignItems: 'flex-start',
     marginBottom: 14,
   },
@@ -715,54 +557,32 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.butterBrown,
   },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 10,
-  },
-  progressLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.subText,
-  },
-  progressValue: {
-    textAlign: 'right',
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.butterDeep,
-  },
-  missionStatusBox: {
+  growthStatsRow: {
+    paddingTop: 14,
     marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
+    gap: 14,
   },
-  completedMissionStatusBox: {
-    backgroundColor: colors.successBg,
-    borderColor: 'rgba(82, 123, 50, 0.20)',
-  },
-  missionStatusText: {
+  growthStatItem: {
     flex: 1,
+  },
+  growthStatLabel: {
     fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
     fontWeight: '800',
     color: colors.subText,
+    marginBottom: 5,
   },
-  completedMissionStatusText: {
-    color: colors.successText,
+  growthStatValue: {
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.text,
   },
   sectionHeader: {
-    marginTop: 10,
+    marginTop: 8,
     marginBottom: 12,
   },
   sectionSubtitle: {
@@ -772,27 +592,22 @@ const styles = StyleSheet.create({
     color: colors.subText,
   },
   shortcutCard: {
-    minHeight: 76,
-    borderRadius: 24,
+    minHeight: 72,
+    borderRadius: 23,
     paddingHorizontal: 15,
-    paddingVertical: 14,
-    backgroundColor: colors.whiteCard,
+    paddingVertical: 13,
+    backgroundColor: 'rgba(255,255,255,0.34)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255,255,255,0.42)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     marginBottom: 10,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.07,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 2,
   },
   shortcutIconBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 17,
     backgroundColor: colors.butterPale,
     alignItems: 'center',
     justifyContent: 'center',
@@ -813,97 +628,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.subText,
   },
-  budgetSignalCard: {
-    backgroundColor: colors.butterCard,
-  },
-  signalTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 13,
-    marginBottom: 16,
-  },
-  signalIconBubble: {
-    width: 54,
-    height: 54,
-    borderRadius: 22,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  signalTextBox: {
-    flex: 1,
-  },
-  signalTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 22,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.4,
-    marginBottom: 4,
-  },
-  signalDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  signalBadge: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  signalBadgeText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  signalAmountRow: {
-    padding: 15,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.56)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 14,
-  },
-  amountLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 5,
-  },
-  amountValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 17,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  amountRight: {
-    alignItems: 'flex-end',
-  },
-  signalHint: {
-    marginTop: 12,
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.subText,
-  },
-  appSettingCard: {
-    backgroundColor: colors.whiteCard,
+  settingCard: {
+    backgroundColor: 'rgba(255,255,255,0.36)',
   },
   settingList: {
-    gap: 10,
+    gap: 14,
   },
   settingItem: {
-    minHeight: 76,
-    borderRadius: 24,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(255, 247, 214, 0.60)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+    minHeight: 58,
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
@@ -916,10 +648,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   settingIconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.62)',
+    width: 40,
+    height: 40,
+    borderRadius: 16,
+    backgroundColor: colors.butterPale,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -940,21 +672,17 @@ const styles = StyleSheet.create({
     color: colors.subText,
   },
   accountCard: {
-    backgroundColor: colors.whiteCard,
+    backgroundColor: 'rgba(255,255,255,0.36)',
   },
   accountItem: {
-    minHeight: 70,
-    borderRadius: 22,
-    paddingHorizontal: 14,
+    minHeight: 62,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     paddingVertical: 12,
-    backgroundColor: 'rgba(255, 247, 214, 0.56)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
     alignItems: 'center',
-    marginBottom: 10,
   },
   accountTitle: {
     fontFamily: typography.fontFamily,
@@ -969,41 +697,29 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.subText,
   },
-  accountSummaryBox: {
-    minHeight: 64,
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255, 247, 214, 0.56)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  accountSummaryLine: {
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
     alignItems: 'center',
-    marginBottom: 10,
+    gap: 7,
+    marginBottom: 12,
   },
-  accountSummaryLabel: {
+  accountSummaryText: {
+    flex: 1,
     fontFamily: typography.fontFamily,
-    fontSize: 12.5,
+    fontSize: 13,
     color: colors.subText,
-    marginBottom: 4,
-  },
-  accountSummaryValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '900',
-    color: colors.text,
   },
   logoutButton: {
-    height: 56,
-    borderRadius: 22,
+    height: 54,
+    borderRadius: 21,
     backgroundColor: colors.butterStrong,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    marginTop: 6,
   },
   logoutText: {
     fontFamily: typography.fontFamily,

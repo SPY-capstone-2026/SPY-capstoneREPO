@@ -6,10 +6,8 @@ import {
   BadgeCheck,
   BarChart3,
   CalendarDays,
-  ClipboardCheck,
   CreditCard,
   Gauge,
-  PiggyBank,
   Plus,
   Sparkles,
   Trophy,
@@ -27,8 +25,6 @@ import { useMission } from '@/contexts/MissionContext';
 import {
   formatWon,
   getBudgetGap,
-  getChallengeTone,
-  sortEvaluatedCategories,
 } from '@/utils/aiFormat';
 import {
   getBudgetBg,
@@ -43,6 +39,7 @@ import { getCategoryMeta } from '@/utils/categoryMeta';
 export default function HomeScreen() {
   const mission = mockTodayChallenge;
   const metadata = mission.ai_metadata;
+
   const missionMeta = getCategoryMeta(mission.category_name);
   const MissionIcon = missionMeta.Icon;
 
@@ -52,19 +49,12 @@ export default function HomeScreen() {
     currentLevel,
   } = useMission();
 
-  const evaluatedCategories = sortEvaluatedCategories(
-    metadata.evaluated_categories
-  );
-
   const pressureTone = getBudgetTone(metadata.budget_pressure);
   const pressureColor = getBudgetColor(metadata.budget_pressure);
   const pressureLabel = getBudgetLabel(metadata.budget_pressure);
   const pressureBg = getBudgetBg(metadata.budget_pressure);
-  const missionTone = getChallengeTone(mission.challenge_type);
-  const budgetGap = getBudgetGap(mission);
 
-  const levelGoal = 200;
-  const levelProgress = Math.min(currentXp / levelGoal, 1);
+  const budgetGap = getBudgetGap(mission);
 
   const todaySpend = mockTransactions
     .filter((transaction) => transaction.tx_date === mission.challenge_date)
@@ -88,21 +78,21 @@ export default function HomeScreen() {
           title={
             isTodayMissionCompleted
               ? '오늘 미션을 완료했어요.'
-              : '오늘은 카페 소비를 조심하면 좋아요.'
+              : `${mission.category_name} 소비를 조금만 조심해 볼까요?`
           }
           description={
             isTodayMissionCompleted
-              ? 'XP가 반영되었습니다. 오늘 지출도 함께 확인해 보세요.'
-              : '이번 달 예산 흐름상 카페 소비가 가장 먼저 관리하면 좋은 항목입니다.'
+              ? '좋은 흐름입니다. 오늘의 지출만 가볍게 확인하면 됩니다.'
+              : '오늘 가장 먼저 관리하면 좋은 소비 항목을 Moni가 골라봤어요.'
           }
           Icon={isTodayMissionCompleted ? BadgeCheck : Sparkles}
         />
 
-        <GlassCard delay={80} tone="butter" style={styles.todayCard}>
-          <View style={styles.todayTopRow}>
+        <GlassCard delay={80} tone="butter" style={styles.primaryCard}>
+          <View style={styles.primaryTopRow}>
             <View
               style={[
-                styles.todayIconBubble,
+                styles.primaryIconBubble,
                 isTodayMissionCompleted && styles.completedIconBubble,
               ]}
             >
@@ -113,27 +103,30 @@ export default function HomeScreen() {
               )}
             </View>
 
-            <View style={styles.todayTextBox}>
+            <View style={styles.primaryTextBox}>
               <Text style={styles.cardLabel}>
                 {isTodayMissionCompleted ? '완료한 미션' : '오늘의 미션'}
               </Text>
-              <Text style={styles.todayTitle}>{mission.challenge_text}</Text>
+
+              <Text style={styles.primaryTitle}>
+                {isTodayMissionCompleted
+                  ? '오늘의 미션을 완료했습니다.'
+                  : mission.challenge_text}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.todayInfoRow}>
-            <View style={styles.todayInfoItem}>
-              <Text style={styles.infoLabel}>보상</Text>
-              <Text style={styles.infoValue}>
-                {isTodayMissionCompleted
-                  ? `+${mission.xp_reward} XP 완료`
-                  : `+${mission.xp_reward} XP`}
+          <View style={styles.compactInfoRow}>
+            <View style={styles.compactInfoItem}>
+              <Text style={styles.compactLabel}>보상</Text>
+              <Text style={styles.compactValue}>
+                +{mission.xp_reward} XP
               </Text>
             </View>
 
-            <View style={styles.todayInfoItem}>
-              <Text style={styles.infoLabel}>현재 레벨</Text>
-              <Text style={styles.infoValue}>
+            <View style={styles.compactInfoItem}>
+              <Text style={styles.compactLabel}>성장</Text>
+              <Text style={styles.compactValue}>
                 Lv. {currentLevel} · {currentXp} XP
               </Text>
             </View>
@@ -146,7 +139,7 @@ export default function HomeScreen() {
           />
         </GlassCard>
 
-        <View style={styles.quickRow}>
+        <View style={styles.quickSection}>
           <Pressable
             style={styles.quickCard}
             onPress={() => router.push('/(tabs)/transactions')}
@@ -154,10 +147,12 @@ export default function HomeScreen() {
             <View style={styles.quickIconBubble}>
               <Plus size={20} color={colors.text} strokeWidth={2.8} />
             </View>
+
             <View style={styles.quickTextBox}>
               <Text style={styles.quickTitle}>지출 추가</Text>
               <Text style={styles.quickDescription}>방금 쓴 돈 기록</Text>
             </View>
+
             <ArrowRight size={17} color={colors.butterBrown} strokeWidth={2.8} />
           </Pressable>
 
@@ -168,24 +163,26 @@ export default function HomeScreen() {
             <View style={styles.quickIconBubble}>
               <BarChart3 size={20} color={colors.text} strokeWidth={2.8} />
             </View>
+
             <View style={styles.quickTextBox}>
-              <Text style={styles.quickTitle}>리포트</Text>
-              <Text style={styles.quickDescription}>소비 흐름 확인</Text>
+              <Text style={styles.quickTitle}>리포트 보기</Text>
+              <Text style={styles.quickDescription}>이번 달 흐름 확인</Text>
             </View>
+
             <ArrowRight size={17} color={colors.butterBrown} strokeWidth={2.8} />
           </Pressable>
         </View>
 
-        <GlassCard delay={180} style={styles.flowCard}>
+        <GlassCard delay={170} style={styles.monthCard}>
           <View style={styles.sectionTitleRow}>
             <Gauge size={18} color={colors.butterDeep} strokeWidth={2.8} />
-            <Text style={styles.sectionTitle}>이번 달 흐름</Text>
+            <Text style={styles.sectionTitle}>이번 달 한눈에 보기</Text>
           </View>
 
-          <View style={styles.flowTopRow}>
+          <View style={styles.monthTopRow}>
             <View>
               <Text style={styles.cardLabel}>월말 예상 지출</Text>
-              <Text style={styles.heroValue}>
+              <Text style={styles.monthValue}>
                 {formatWon(metadata.predicted_monthly_spend)}
               </Text>
             </View>
@@ -197,7 +194,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <View style={styles.progressRow}>
+          <View style={styles.progressInfoRow}>
             <Text style={styles.progressLabel}>예산 사용 예상</Text>
             <Text style={[styles.progressValue, { color: pressureColor }]}>
               {getBudgetSignalText(metadata.budget_pressure)}
@@ -209,139 +206,62 @@ export default function HomeScreen() {
             tone={pressureTone}
           />
 
-          <Text style={styles.flowDescription}>
+          <Text style={styles.monthMessage}>
             {getFriendlyBudgetMessage(metadata.budget_pressure)}
           </Text>
 
-          <View style={styles.metricGrid}>
-            <View style={styles.metricItem}>
-              <CreditCard size={16} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.metricLabel}>오늘 지출</Text>
-              <Text style={styles.metricValue}>{formatWon(todaySpend)}</Text>
+          <View style={styles.monthMetricList}>
+            <View style={styles.monthMetricItem}>
+              <CreditCard
+                size={16}
+                color={colors.butterBrown}
+                strokeWidth={2.8}
+              />
+              <Text style={styles.monthMetricLabel}>오늘 지출</Text>
+              <Text style={styles.monthMetricValue}>{formatWon(todaySpend)}</Text>
             </View>
 
-            <View style={styles.metricItem}>
+            <View style={styles.monthMetricItem}>
               <CalendarDays
                 size={16}
                 color={colors.butterBrown}
                 strokeWidth={2.8}
               />
-              <Text style={styles.metricLabel}>남은 예상</Text>
-              <Text style={styles.metricValue}>
+              <Text style={styles.monthMetricLabel}>남은 기간 예상</Text>
+              <Text style={styles.monthMetricValue}>
                 {formatWon(metadata.predicted_remaining_spend)}
               </Text>
             </View>
 
-            <View style={styles.metricItem}>
+            <View style={styles.monthMetricItem}>
               <WalletCards
                 size={16}
                 color={colors.butterBrown}
                 strokeWidth={2.8}
               />
-              <Text style={styles.metricLabel}>
+              <Text style={styles.monthMetricLabel}>
                 {budgetGap >= 0 ? '초과 예상' : '여유 예상'}
               </Text>
-              <Text style={styles.metricValue}>{formatWon(Math.abs(budgetGap))}</Text>
+              <Text style={styles.monthMetricValue}>
+                {formatWon(Math.abs(budgetGap))}
+              </Text>
             </View>
           </View>
         </GlassCard>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>지금 관리하면 좋은 항목</Text>
-          <Text style={styles.sectionSubtitle}>
-            예산을 넘기 쉬운 항목만 간단히 보여드립니다.
-          </Text>
-        </View>
-
-        {evaluatedCategories.slice(0, 3).map((category, index) => {
-          const categoryMeta = getCategoryMeta(category.category_name);
-          const CategoryIcon = categoryMeta.Icon;
-
-          const itemPressureTone = getBudgetTone(category.budget_pressure);
-          const itemPressureColor = getBudgetColor(category.budget_pressure);
-          const itemPressureBg = getBudgetBg(category.budget_pressure);
-          const isSelected = category.category_name === mission.category_name;
-
-          return (
-            <GlassCard
-              key={category.category_name}
-              delay={260 + index * 60}
-              tone={isSelected ? 'butter' : 'soft'}
-            >
-              <View style={styles.categoryRow}>
-                <View style={styles.categoryLeft}>
-                  <View
-                    style={[
-                      styles.categoryIconBubble,
-                      isSelected && styles.selectedCategoryIconBubble,
-                    ]}
-                  >
-                    <CategoryIcon
-                      size={20}
-                      color={colors.text}
-                      strokeWidth={2.8}
-                    />
-                  </View>
-
-                  <View style={styles.categoryTextBox}>
-                    <Text style={styles.categoryName}>
-                      {category.category_name}
-                    </Text>
-                    <Text style={styles.categoryMeta}>
-                      예상 {formatWon(category.predicted_monthly_spend)} · 예산{' '}
-                      {formatWon(category.budget_limit)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View
-                  style={[
-                    styles.categoryBadge,
-                    {
-                      backgroundColor: itemPressureBg,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryBadgeText,
-                      {
-                        color: itemPressureColor,
-                      },
-                    ]}
-                  >
-                    {isSelected ? '오늘 관리' : getBudgetLabel(category.budget_pressure)}
-                  </Text>
-                </View>
-              </View>
-
-              <AnimatedProgressBar
-                progress={category.budget_pressure}
-                tone={itemPressureTone}
-              />
-            </GlassCard>
-          );
-        })}
-
-        <GlassCard delay={480} tone="soft" style={styles.levelCard}>
-          <View style={styles.levelRow}>
-            <View style={styles.levelIconBubble}>
+        <GlassCard delay={450} tone="soft" style={styles.bottomGuideCard}>
+          <View style={styles.bottomGuideRow}>
+            <View style={styles.bottomGuideIconBubble}>
               <Trophy size={21} color={colors.text} strokeWidth={2.8} />
             </View>
 
-            <View style={styles.levelTextBox}>
-              <Text style={styles.levelTitle}>
-                Lv. {currentLevel} · {currentXp} XP
-              </Text>
-              <Text style={styles.levelDescription}>
-                {currentXp >= levelGoal
-                  ? '새로운 레벨에 도달했어요.'
-                  : `다음 레벨까지 ${levelGoal - currentXp} XP 남았습니다.`}
+            <View style={styles.bottomGuideTextBox}>
+              <Text style={styles.bottomGuideTitle}>오늘은 이것만 보면 돼요</Text>
+              <Text style={styles.bottomGuideDescription}>
+                미션 완료 여부, 오늘 지출, 이번 달 예상 흐름만 확인하면 충분합니다.
               </Text>
             </View>
           </View>
-
-          <AnimatedProgressBar progress={levelProgress} tone="warning" />
         </GlassCard>
       </ScrollView>
     </LinearGradient>
@@ -383,22 +303,15 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 128,
   },
-  cardLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 6,
+  primaryCard: {
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
-  todayCard: {
-    backgroundColor: 'rgba(255, 248, 216, 0.42)',
-  },
-  todayTopRow: {
+  primaryTopRow: {
     flexDirection: 'row',
     gap: 14,
     marginBottom: 16,
   },
-  todayIconBubble: {
+  primaryIconBubble: {
     width: 62,
     height: 62,
     borderRadius: 24,
@@ -409,10 +322,17 @@ const styles = StyleSheet.create({
   completedIconBubble: {
     backgroundColor: colors.successBg,
   },
-  todayTextBox: {
+  primaryTextBox: {
     flex: 1,
   },
-  todayTitle: {
+  cardLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.subText,
+    marginBottom: 6,
+  },
+  primaryTitle: {
     fontFamily: typography.fontFamily,
     fontSize: 23,
     lineHeight: 31,
@@ -420,27 +340,25 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: -0.6,
   },
-  todayInfoRow: {
+  compactInfoRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 22,
+    paddingTop: 14,
     marginBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
   },
-  todayInfoItem: {
+  compactInfoItem: {
     flex: 1,
-    borderRadius: 20,
-    padding: 13,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
   },
-  infoLabel: {
+  compactLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '800',
     color: colors.subText,
     marginBottom: 5,
   },
-  infoValue: {
+  compactValue: {
     fontFamily: typography.fontFamily,
     fontSize: 15,
     fontWeight: '900',
@@ -449,7 +367,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     marginTop: 2,
   },
-  quickRow: {
+  quickSection: {
     gap: 10,
     marginBottom: 14,
   },
@@ -488,7 +406,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.subText,
   },
-  flowCard: {
+  monthCard: {
     backgroundColor: 'rgba(255,255,255,0.36)',
   },
   sectionTitleRow: {
@@ -504,14 +422,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 5,
   },
-  flowTopRow: {
+  monthTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 14,
     alignItems: 'flex-start',
     marginBottom: 18,
   },
-  heroValue: {
+  monthValue: {
     fontFamily: typography.fontFamily,
     fontSize: 32,
     fontWeight: '900',
@@ -528,7 +446,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
-  progressRow: {
+  progressInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
@@ -547,18 +465,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  flowDescription: {
+  monthMessage: {
     marginTop: 12,
     fontFamily: typography.fontFamily,
     fontSize: 14,
     lineHeight: 21,
     color: colors.subText,
   },
-  metricGrid: {
+  monthMetricList: {
     marginTop: 15,
     gap: 8,
   },
-  metricItem: {
+  monthMetricItem: {
     minHeight: 54,
     borderRadius: 18,
     paddingHorizontal: 13,
@@ -569,13 +487,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  metricLabel: {
+  monthMetricLabel: {
     flex: 1,
     fontFamily: typography.fontFamily,
     fontSize: 13,
     color: colors.subText,
   },
-  metricValue: {
+  monthMetricValue: {
     fontFamily: typography.fontFamily,
     fontSize: 14,
     fontWeight: '900',
@@ -612,7 +530,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedCategoryIconBubble: {
+  primaryCategoryIconBubble: {
     backgroundColor: colors.butterStrong,
   },
   categoryTextBox: {
@@ -640,16 +558,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  levelCard: {
+  bottomGuideCard: {
     backgroundColor: 'rgba(255,251,240,0.34)',
   },
-  levelRow: {
+  bottomGuideRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 12,
   },
-  levelIconBubble: {
+  bottomGuideIconBubble: {
     width: 44,
     height: 44,
     borderRadius: 18,
@@ -657,19 +574,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  levelTextBox: {
+  bottomGuideTextBox: {
     flex: 1,
   },
-  levelTitle: {
+  bottomGuideTitle: {
     fontFamily: typography.fontFamily,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '900',
     color: colors.text,
     marginBottom: 4,
   },
-  levelDescription: {
+  bottomGuideDescription: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
+    lineHeight: 19,
     color: colors.subText,
   },
 });
