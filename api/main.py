@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from datetime import date
 import pandas as pd
 from moni_engine.engine import get_today_challenges
+from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,6 +19,18 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Moni API 서버", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:19006",
+        "http://127.0.0.1:19006",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class SignupRequest(BaseModel):
     email: str

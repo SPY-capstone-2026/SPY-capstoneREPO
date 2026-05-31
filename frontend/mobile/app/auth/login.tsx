@@ -24,14 +24,40 @@ import { AnimatedButton } from '@/components/AnimatedButton';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useToast } from '@/contexts/ToastContext';
+import { ApiError } from '@/services/apiClient';
+import { getMeApi, loginApi } from '@/services/authApi';
+import { deleteAccessToken } from '@/services/tokenStorage';
+
+function getLoginErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return '이메일 또는 비밀번호를 확인해 주세요.';
+    }
+
+    if (error.status === 422) {
+      return '입력한 로그인 정보 형식을 확인해 주세요.';
+    }
+
+    return error.message || '로그인에 실패했습니다.';
+  }
+
+  if (error instanceof TypeError) {
+    return '서버에 연결할 수 없습니다. 네트워크 또는 CORS 설정을 확인해 주세요.';
+  }
+
+  return '로그인 중 문제가 발생했습니다.';
+}
 
 export default function LoginScreen() {
   const { showToast } = useToast();
 
   const [email, setEmail] = useState('demo@moni.app');
   const [password, setPassword] = useState('12345678');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
+    if (isLoading) return;
+
     if (!email.trim()) {
       showToast('이메일을 입력해 주세요.');
       return;
@@ -42,8 +68,24 @@ export default function LoginScreen() {
       return;
     }
 
-    showToast('로그인되었습니다.');
-    router.replace('/(tabs)/home');
+    try {
+      setIsLoading(true);
+
+      await loginApi({
+        email: email.trim(),
+        password,
+      });
+
+      await getMeApi();
+
+      showToast('로그인되었습니다.');
+      router.replace('/(tabs)/home');
+    } catch (error) {
+      await deleteAccessToken();
+      showToast(getLoginErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -66,7 +108,6 @@ export default function LoginScreen() {
         >
           <View style={styles.hero}>
             <View style={styles.logoBubble}>
-              <View style={styles.logoLight} />
               <WalletCards size={38} color={colors.text} strokeWidth={2.8} />
             </View>
 
@@ -77,14 +118,14 @@ export default function LoginScreen() {
 
             <Text style={styles.title}>소비 습관을 하루 미션으로 관리해요.</Text>
             <Text style={styles.subtitle}>
-              지출 흐름을 확인하고, 오늘 실천할 작은 소비 목표를 추천받아보세요.
+              로그인하고 오늘의 소비 미션과 이번 달 예산 흐름을 확인해 보세요.
             </Text>
           </View>
 
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>로그인</Text>
             <Text style={styles.formDescription}>
-              Moni와 함께 오늘의 소비 미션을 확인해 보세요.
+              이메일과 비밀번호를 입력해 주세요.
             </Text>
 
             <View style={styles.inputBox}>
@@ -97,6 +138,7 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 value={email}
                 onChangeText={setEmail}
+                editable={!isLoading}
               />
             </View>
 
@@ -113,19 +155,24 @@ export default function LoginScreen() {
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
+                editable={!isLoading}
               />
               <Eye size={18} color={colors.mutedText} strokeWidth={2.4} />
             </View>
 
             <AnimatedButton
-              title="로그인하기"
+              title={isLoading ? '로그인 중...' : '로그인하기'}
               onPress={handleLogin}
               style={styles.loginButton}
             />
 
             <Pressable
               style={styles.signupLink}
-              onPress={() => router.push('/auth/signup')}
+              onPress={() => {
+                if (!isLoading) {
+                  router.push('/auth/signup');
+                }
+              }}
             >
               <Text style={styles.signupText}>처음이신가요?</Text>
               <View style={styles.signupRight}>
@@ -167,7 +214,7 @@ const styles = StyleSheet.create({
     width: 170,
     height: 170,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.68)',
+    backgroundColor: 'rgba(255,255,255,0.58)',
   },
   backgroundOrbTiny: {
     position: 'absolute',
@@ -176,7 +223,7 @@ const styles = StyleSheet.create({
     width: 86,
     height: 86,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 240, 184, 0.52)',
+    backgroundColor: 'rgba(255, 240, 184, 0.42)',
   },
   container: {
     flexGrow: 1,
@@ -196,7 +243,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.butterStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
     marginBottom: 18,
     shadowColor: colors.shadow,
     shadowOpacity: 0.18,
@@ -206,6 +252,18 @@ const styles = StyleSheet.create({
       height: 12,
     },
     elevation: 7,
+  },
+  brandPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.32)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 14,
   },
   brandPillText: {
     fontFamily: typography.fontFamily,
@@ -232,60 +290,21 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.subText,
   },
-formCard: {
-  borderRadius: 32,
-  padding: 22,
-  backgroundColor: 'rgba(255,255,255,0.38)',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.46)',
-  shadowColor: colors.shadow,
-  shadowOpacity: 0.10,
-  shadowRadius: 22,
-  shadowOffset: {
-    width: 0,
-    height: 12,
+  formCard: {
+    borderRadius: 32,
+    padding: 22,
+    backgroundColor: 'rgba(255,255,255,0.38)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.46)',
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.10,
+    shadowRadius: 22,
+    shadowOffset: {
+      width: 0,
+      height: 12,
+    },
+    elevation: 5,
   },
-  elevation: 5,
-},
-inputBox: {
-  height: 58,
-  paddingHorizontal: 0,
-  backgroundColor: 'transparent',
-  borderBottomWidth: 1,
-  borderBottomColor: 'rgba(122,111,91,0.18)',
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 10,
-  marginBottom: 12,
-},
-signupLink: {
-  marginTop: 16,
-  minHeight: 52,
-  borderRadius: 0,
-  backgroundColor: 'transparent',
-  borderTopWidth: 1,
-  borderTopColor: 'rgba(122,111,91,0.14)',
-  paddingHorizontal: 0,
-  paddingTop: 14,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-},
-brandPill: {
-  paddingHorizontal: 12,
-  paddingVertical: 7,
-  borderRadius: 999,
-  backgroundColor: 'rgba(255,255,255,0.22)',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.32)',
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 6,
-  marginBottom: 14,
-},
-logoLight: {
-  display: 'none',
-},
   formTitle: {
     fontFamily: typography.fontFamily,
     fontSize: 24,
@@ -299,7 +318,18 @@ logoLight: {
     fontSize: 14,
     lineHeight: 20,
     color: colors.subText,
-    marginBottom: 18,
+    marginBottom: 16,
+  },
+  inputBox: {
+    height: 58,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(122,111,91,0.18)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
   },
   input: {
     flex: 1,
@@ -308,7 +338,17 @@ logoLight: {
     color: colors.text,
   },
   loginButton: {
-    marginTop: 8,
+    marginTop: 12,
+  },
+  signupLink: {
+    marginTop: 16,
+    minHeight: 52,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
+    paddingTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   signupText: {
     fontFamily: typography.fontFamily,
@@ -325,12 +365,5 @@ logoLight: {
     fontSize: 14,
     fontWeight: '900',
     color: colors.butterBrown,
-  },
-  helperText: {
-    marginTop: 16,
-    textAlign: 'center',
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    color: colors.mutedText,
   },
 });

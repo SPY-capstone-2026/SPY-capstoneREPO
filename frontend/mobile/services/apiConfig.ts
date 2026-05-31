@@ -1,2 +1,4 @@
+const LOCAL_API_BASE_URL = 'http://localhost:8000';
+
 export const API_BASE_URL =
-  'https://spy-capstonerepo-production.up.railway.app';
+  process.env.EXPO_PUBLIC_API_BASE_URL || LOCAL_API_BASE_URL;
