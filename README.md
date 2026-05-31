@@ -2,14 +2,21 @@
 
 > 사용자의 과거 소비 패턴을 분석해 미래 지출을 예측하고, 그 결과를 바탕으로 **오늘 바로 실천할 수 있는 개인화 지출 제한형 챌린지**를 생성하는 소비 습관 코칭 앱
 
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)
+![React Native](https://img.shields.io/badge/React%20Native-Expo-000020?logo=expo&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-DB-4169E1?logo=postgresql&logoColor=white)
+![Prophet](https://img.shields.io/badge/Forecast-Prophet-2D6CDF)
+
 ---
 
 ## 프로젝트 소개
 
 ### 해결하려는 문제
+
 기존 가계부·소비 관리 서비스는 사용자가 **얼마를 썼는지 기록하고 통계를 보여주는 것**에는 강하지만, 실제로 **오늘 어떤 소비 행동을 해야 하는지 알려주지 못하는 경우**가 많습니다.
 
-많은 사람들이 예산을 세우지만 실제 행동으로 이어가지 못합니다.  
+많은 사람들이 예산을 세우지만 실제 행동으로 이어가지 못합니다.
 "카페를 너무 자주 간다", "충동구매를 줄여야 한다"는 사실은 알고 있어도, 정작 **오늘 어떻게 행동해야 할지**는 알기 어렵습니다.
 
 기존 소비 관리 앱은 대체로 아래에 머무릅니다.
@@ -23,18 +30,17 @@
 > 핵심 문제: 소비 습관은 월간 통계가 아니라 **오늘의 행동**으로 결정된다. 기존 앱은 기록 도구일 뿐, 행동 변화 도구가 아니다.
 
 ### 기술 솔루션
-사용자의 과거 소비 패턴을 분석해 **향후 소비를 예측**하고, 예측 결과와 예산 대비 압박도를 반영해 **당일 맞춤형 챌린지**를 생성합니다.
+
+사용자의 과거 소비 패턴을 분석해 **향후 소비를 예측**하고, 예측 결과와 예산 대비 압박도를 반영해 **당일 맞춤형 챌린지**를 생성합니다. 이 엔진을 FastAPI 백엔드에 통합하고, React Native 모바일 앱에서 사용자가 직접 챌린지를 받아볼 수 있도록 구성했습니다.
 
 ### 기대 효과
+
 사용자는 단순히 월말에 반성하는 것이 아니라, **소비 전 개입을 받고**, 작은 실천을 반복하며 최종적으로 소비 습관을 바꿀 수 있습니다.
 
 - 월말 통계를 기다리지 않고 **오늘 바로 행동할 수 있는 목표**를 받습니다.
-- 예산 압박도에 따라 다른 수준의 챌린지를 받아 **개인화된 개입**을 경험할 수 있습니다.
-- 챌린지와 XP 구조를 통해 **지속적인 실천 동기**를 얻을 수 있습니다.
+- 예산 압박도에 따라 다른 수준의 챌린지를 받아 **개인화된 개입**을 경험합니다.
+- 챌린지와 XP 구조를 통해 **지속적인 실천 동기**를 얻습니다.
 - 향후 주간 리포트, 캐릭터 성장, 소셜 기능과 연결하면 더 확장성 있는 행동 변화 서비스로 발전할 수 있습니다.
-
-### MVP 핵심기술
-**과거 소비 데이터 → 지출 예측 → 예산 압박도 계산 → 오늘의 챌린지 생성**
 
 ---
 
@@ -50,191 +56,113 @@
 
 ---
 
-## 기술 솔루션 및 MVP 소프트웨어
-
-MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다.
-
-- 시스템 동작 순서
-
-1. 사용자의 과거 소비 데이터를 입력받습니다.
-2. 시계열 패턴을 바탕으로 향후 소비를 예측합니다.
-3. 예측 소비 총액과 월 예산을 비교해 **예산 압박도**를 계산합니다.
-4. 압박도에 따라 챌린지 난이도를 결정합니다.
-5. 난이도와 최근 소비 행동(어제 소비, 무지출 streak 등)에 따라 오늘의 챌린지와 보상 XP를 제안합니다.
-
-단순히 이번 달에 얼마를 썼는지를 보여주는 것을 넘어 **오늘 어떤 소비를 해야 하는지** 안내합니다.
-
-예를 들어,
-
-- 카페 소비가 목표 대비 빠르게 증가하면  
-  → **"오늘 카페 지출 0원 유지하기"** 같은 강한 챌린지가 제안됩니다.
-- 예산 압박도가 중간 수준이면  
-  → **"오늘 카페 5,000원 이하로 유지하기"** 같은 제한형 챌린지가 생성됩니다.
-- 비교적 안정적인 페이스라면  
-  → **"오늘 카페 8,000원 이하로 가볍게 유지하기"** 같은 완화된 챌린지가 제안됩니다.
-
-현재 테스트 코드는 카페 소비 데이터로 카테고리를 제한했습니다.
-
----
-
-## 입력 데이터
-
-- 일별 소비 금액
-- 날짜 정보
-- 최근 소비 패턴 (7일 평균, 14일 합계, 무지출 streak)
-- 월 예산
-- 예측 구간의 총 지출 합계
-
-소비 프로필은 `careful` / `balanced` / `overspend` / `custom` 네 가지 중 하나를 선택해 시나리오를 바꿀 수 있습니다.
-
----
-
-## 출력 결과
-
-- **projected_30d_total**: 향후 30일 예측 총 소비액
-- **budget_pressure**: 예산 대비 압박도 (예: 1.20 = 예산의 120%)
-- **difficulty**: Easy / Medium / Hard
-- **challenge_type**: 금지형 / 강한 제한형 / 제한형 / streak 유지형 / 유지형 등
-- **challenge_text**: 오늘의 챌린지 문구
-- **reward_xp**: 달성 보상 XP
-- **reasons**: 챌린지 생성 이유 목록
-- **forecast metrics**: MAE / RMSE / MAPE
-
----
-
-## 왜 이 기술이 핵심기술인가
-
-- 단순 기록/통계 제공이 아니라, **예측 결과를 오늘의 행동 지침으로 변환**합니다.
-- 사용자의 소비 흐름이 어떤 방식으로 챌린지에 반영되는지 **설명 가능성**이 있습니다.
-- 테스트 코드를 통해 실행 과정을 직접 보여줄 수 있습니다.
-- 향후 LLM, 앱 UI, 소셜 기능과 연결되더라도 **중심 엔진으로 확장**할 수 있습니다.
-
-> **소비 패턴 변화 → 예측값 변화 → 예산 압박도 변화 → 챌린지 변화**
-
----
-
-## 현재 저장소에서 구현된 범위
-
-### 현재 구현됨
-- 재현 가능한 합성 소비 데이터 생성 (4가지 프로필 지원)
-- Prophet 기반 소비 예측
-- MAE / RMSE / MAPE 평가
-- 예산 압박도 + 최근 소비 행동 기반 챌린지 난이도 결정
-- 챌린지 타입 분기 (금지형 / 제한형 / streak 유지형 / 유지형 등)
-- 챌린지 생성 이유 목록 출력
-- Colab 내 HTML 카드 UI 렌더링
-
-### 향후 확장 예정
-- 카테고리별 예측 모델 분리
-- Prophet / ARIMA / LSTM 비교 실험 확장
-- 사용자 목표 기반 챌린지 개인화
-- 주간 리포트와 캐릭터 성장 시스템 연동
-- 앱/웹 프론트엔드 연결
-
----
-
-## 핵심 실험과 결과
-
-### 실험 목적
-- 과거 소비 패턴을 기반으로 향후 소비를 예측할 수 있는지 확인
-- 예측 결과가 예산 압박도로 변환되는지 확인
-- 압박도와 최근 소비 행동이 실제 챌린지 난이도와 문구 변화로 이어지는지 확인
-- 전체 흐름이 재현 가능하게 동작하는지 확인
-
-### 실행 방법
-
-Google Colab에서 `ai/moni_pipeline.ipynb`를 열고, 상단 설정 셀에서 프로필과 시드를 선택한 뒤 전체 셀을 실행합니다.
-
-```python
-# 상단 설정값 예시
-PROFILE = "balanced"   # "careful" / "balanced" / "overspend" / "custom"
-SEED = None            # None: 매번 다른 결과 / 정수: 재현 가능
-```
-
-### 실행 시 확인되는 내용
-- 합성 소비 데이터 기반 train/test 분할
-- Prophet 예측 결과 및 시각화
-- 실제 총 소비액과 예측 총 소비액 비교
-- MAE / RMSE / MAPE
-- 예산 압박도와 챌린지 난이도
-- 챌린지 타입, 생성된 챌린지 문구, XP 보상, 생성 이유
-
----
-
-## 대표 실험 예시
-
-### 1) 예산 압박도가 높은 경우
-
-입력 조건 예시:
+## 시스템 아키텍처
 
 ```text
-예측 총 소비액 > 월 예산의 120%
+┌─────────────────┐     HTTPS      ┌──────────────────────────┐
+│  Android 앱      │  ─────────▶  │   FastAPI (Railway 배포)  │
+│  (React Native)  │               │  ┌────────────────────┐  │
+│                  │  ◀─────────  │  │  Prophet AI 엔진   │  │
+│  챌린지 / 리포트  │   결과 반환   │  │(소비 예측 + 챌린지) │  │
+└─────────────────┘                │  └─────────┬──────────┘  │
+                                   │            │             │
+                                   │      ┌─────▼─────┐       │
+                                   │      │ PostgreSQL│       │
+                                   │      └───────────┘       │
+                                   └──────────────────────────┘
 ```
 
-생성 결과 예시:
+요청 흐름: Android 앱 → API 요청 → Railway URL → FastAPI → Prophet 엔진 → DB → 결과 반환 → Android 앱
 
-```text
-difficulty: Hard
-challenge_type: 금지형
-challenge_text: 오늘 카페 지출 0원 유지하기
-reward_xp: 30
-reasons: ["예상 월 소비가 예산을 20% 이상 초과하고 있습니다.", "어제 소비가 최근 7일 평균보다 높았습니다."]
-```
+### 기술 스택
 
-해석:
-- 현재 소비 페이스가 예산을 강하게 압박하는 상황입니다.
-- 전날 소비도 평균 이상이었다면 가장 강한 수준(금지형)의 챌린지가 생성됩니다.
-- 사용자의 행동을 즉시 제어하는 방향으로 개입합니다.
+| 영역 | 기술 |
+|------|------|
+| Frontend | React Native (Expo), TypeScript |
+| Backend | FastAPI, SQLAlchemy, JWT 인증 |
+| Database | PostgreSQL |
+| AI / 예측 | Prophet, pandas, numpy, scikit-learn |
+| 배포 | Railway (백엔드), Vercel (랜딩 페이지) |
 
 ---
 
-### 2) 예산 압박도가 중간인 경우
+## 핵심 기능
 
-입력 조건 예시:
-
-```text
-예측 총 소비액 ≈ 월 예산의 100% ~ 120%
-```
-
-생성 결과 예시:
-
-```text
-difficulty: Medium
-challenge_type: 제한형
-challenge_text: 오늘 카페 5,000원 이하로 유지하기
-reward_xp: 20
-reasons: ["예상 월 소비가 예산을 초과할 가능성이 있습니다."]
-```
-
-해석:
-- 위기 상황은 아니지만 소비 조절이 필요한 단계입니다.
-- 완전 금지형보다 제한형 챌린지가 더 적합합니다.
-- 무지출 streak가 2일 이상이면 streak 유지형으로 전환됩니다.
+1. **소비 예측** — 과거 소비 패턴으로 향후 카테고리별 지출을 예측합니다. ("이 페이스면 카페에 8만원 쓸 것 같아요")
+2. **데일리 챌린지** — 예산 압박도, 어제 소비, 무지출 streak를 반영해 하루 최대 4개의 챌린지를 자동 생성합니다.
+3. **캐릭터 성장 (예정)** — 챌린지 달성 시 XP 획득 및 레벨업.
+4. **주간 소비 리포트 (예정)** — 한 주간 소비 패턴과 챌린지 달성률 분석.
 
 ---
 
-### 3) 예산 압박도가 낮은 경우
+## AI 엔진: 예측 기반 챌린지 생성
 
-입력 조건 예시:
+MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다. AI 엔진은 4개 모듈로 분리되어 백엔드에서 단일 진입점으로 호출됩니다.
+
+### 입력 (Backend → AI)
+
+- 일별 소비 금액, 날짜, 카테고리 (Transactions)
+- 카테고리별 월 예산, 챌린지 대상 여부 (User_Category_Settings)
+- 사용자 정보 (Users)
+
+### 출력 (AI → Backend)
+
+- `projected_30d_total` — 향후 30일 예측 총 소비액
+- `budget_pressure` — 예산 대비 압박도 (예: 1.20 = 예산의 120%)
+- `challenge_type` — 금지형 / 강한 제한형 / 제한형 / streak형 / 유지형
+- `challenge_text` — 오늘의 챌린지 문구
+- `reward_xp` — 달성 보상 XP
+- `reasons` — 챌린지 생성 이유 목록
+- forecast metrics — MAE / RMSE / MAPE
+
+### 압박도 구간별 챌린지
+
+| 압박도 | 유형 | 난이도 | XP |
+|--------|------|--------|-----|
+| < 0.8 | 유지형 | Easy | 12 |
+| 0.8 ~ 1.1 | 제한형 | Medium | 20 |
+| 1.1 ~ 1.5 | 강한 제한형 | Medium-Hard | 25 |
+| ≥ 1.5 | 금지형 | Hard | 30 |
+
+여기에 무지출 streak가 2일 이상 이어진 자주 쓰는 카테고리에는 **streak 보너스 챌린지**가 추가로 생성됩니다.
+
+### 대표 예시
 
 ```text
-예측 총 소비액 < 월 예산의 100%
+[압박도 높음] 카페 │ 금지형 │ Hard │ XP 30
+오늘은 카페 지출 없이 하루를 보내보세요.
+압박도 2.02 (예상 202,452원 / 예산 100,000원)
+
+[압박도 중간] 식비 │ 제한형 │ Medium │ XP 20
+오늘 식비 5,000원 이하로 유지하기
+
+[streak] 카페 무지출 4일 연속 중! │ Special │ XP 35
+오늘도 이어가서 5일째 달성해볼까요?
 ```
 
-생성 결과 예시:
+---
 
-```text
-difficulty: Easy
-challenge_type: 유지형
-challenge_text: 오늘 카페 8,000원 이하로 가볍게 유지하기
-reward_xp: 12
-reasons: ["현재 소비 페이스가 예산 범위 안에 있습니다."]
-```
+## 현재 구현 현황
 
-해석:
-- 현재 소비 페이스가 비교적 안정적입니다.
-- 챌린지는 유지형 또는 약한 개입형으로 생성됩니다.
-- 무지출 streak가 이어지고 있으면 streak 도전형으로 전환됩니다.
+### ✅ 완료
+
+- **AI 엔진** — preprocessing / prediction / challenge / engine 4개 모듈 분리, 통합 테스트 8종 통과
+- **백엔드** — FastAPI 구조 완성 (회원가입 / 로그인 / JWT 토큰 인증)
+- **AI–백엔드 연동** — Prophet 엔진을 백엔드에 통합, 챌린지 자동 생성 동작
+- **데이터베이스** — PostgreSQL 연결
+- **프론트엔드 UI** — React Native(Expo) 모바일 앱 화면 구현 (홈 / 챌린지 / 리포트 / 마이페이지 / 거래내역 / 로그인·회원가입)
+- **재현 가능한 합성 소비 데이터** — 직장인 패턴 시드 데이터 생성기
+
+### 🔄 진행 중
+
+- **백엔드 클라우드 배포** — Railway 배포 마무리 단계 (완료 시 HTTPS URL 발급)
+- **프론트–백엔드 연동** — 현재 프론트는 mock 데이터로 동작, 배포 URL 연결 예정
+
+### 📋 예정
+
+- 카테고리별 예측 모델 분리, Prophet / ARIMA / LSTM 비교 실험
+- 캐릭터 성장 시스템, 주간 리포트 연동
+- 챌린지 텍스트 다양화
 
 ---
 
@@ -243,58 +171,92 @@ reasons: ["현재 소비 페이스가 예산 범위 안에 있습니다."]
 ```text
 SPY-capstoneREPO/
 ├─ README.md
+├─ Procfile                      # 배포 설정
 ├─ .gitignore
-├─ ai/
-│  └─ moni_pipeline.ipynb
-├─ api/
-│  ├─ package.json
-│  └─ package-lock.json
-├─ frontend/
-│  └─ index.html
-└─ docs/
+│
+├─ api/                          # 백엔드 (FastAPI)
+│  ├─ main.py                    # API 진입점
+│  ├─ auth.py                    # 회원가입 / 로그인 / JWT
+│  ├─ models.py                  # DB 모델
+│  ├─ seed_db.py                 # 시드 데이터 주입
+│  ├─ requirements.txt
+│  └─ ai/                        # AI 엔진
+│     ├─ moni_engine/
+│     │  ├─ preprocessing.py     # 거래 → 일 단위 시계열 + streak
+│     │  ├─ prediction.py        # 월말 예상 지출 + 예산 압박도
+│     │  ├─ challenge.py         # 챌린지 유형 / 난이도 / 문구 / XP
+│     │  └─ engine.py            # 백엔드 호출용 단일 진입점
+│     ├─ seed_data/              # 합성 소비 데이터 + 생성기
+│     ├─ tests/                  # 통합 테스트 8종
+│     ├─ notebooks/              # 시연용 데모 노트북
+│     ├─ moni_pipeline.ipynb     # 전체 파이프라인 노트북
+│     ├─ requirements.txt
+│     └─ README.md               # AI–백엔드 연동 명세
+│
+├─ frontend/                     # 프론트엔드
+│  ├─ index.html                 # 랜딩 페이지
+│  └─ mobile/                    # React Native (Expo) 앱
+│     ├─ app/                    # 화면 (tabs, auth)
+│     ├─ components/             # 공용 컴포넌트
+│     ├─ constants/              # 테마 / mock 데이터
+│     └─ ...
+│
+└─ docs/                         # 기획 문서
    ├─ PMF.md
-   └─ Team_Ground_Rule.md
+   ├─ Team_Ground_Rule.md
+   └─ elevator_speech.md
 ```
 
 ---
 
-## 파일별 설명
+## 실행 방법
 
-### 핵심 파이프라인
+### 1. AI 엔진 단독 실행 / 테스트
 
-- **ai/moni_pipeline.ipynb**  
-  전체 파이프라인이 담긴 단일 Colab 노트북입니다. 합성 소비 데이터 생성, Prophet 학습, 예측 평가, 챌린지 생성, Colab 내 HTML 결과 렌더링까지 하나의 셀에서 실행됩니다.
+```bash
+cd api/ai
+pip install -r requirements.txt
+python tests/test_engine.py        # 통합 테스트 8종
+```
+
+전체 파이프라인을 한 번에 보고 싶다면 `api/ai/moni_pipeline.ipynb`를 Colab/Jupyter에서 열고 상단 설정 셀의 `PROFILE`과 `SEED`를 지정한 뒤 전체 셀을 실행합니다.
+
+```python
+PROFILE = "balanced"   # "careful" / "balanced" / "overspend" / "custom"
+SEED = None            # None: 매번 다른 결과 / 정수: 재현 가능
+```
+
+### 2. 백엔드 실행
+
+```bash
+cd api
+pip install -r requirements.txt
+python seed_db.py                  # 시드 데이터 주입
+uvicorn main:app --reload          # http://localhost:8000
+```
+
+API 문서는 실행 후 `http://localhost:8000/docs`에서 확인할 수 있습니다.
+
+### 3. 프론트엔드 (모바일 앱) 실행
+
+```bash
+cd frontend/mobile
+npm install
+npx expo start
+```
 
 ---
 
-## 사용 기술
+## 팀
 
-- Python
-- Prophet
-- pandas / numpy
-- scikit-learn 기반 평가 지표
-- Rule-based challenge generation
-- Reproducible synthetic data generation
-
----
-
-## 처음 보는 사람을 위한 읽는 순서
-
-1. `ai/moni_pipeline.ipynb`를 Colab에서 열고 상단 설정값을 확인합니다.
-2. `run_pipeline()`이 어떤 흐름으로 예측과 챌린지 생성을 묶는지 봅니다.
-3. `generate_challenge()`에서 예산 압박도와 최근 소비 행동이 어떻게 챌린지로 변환되는지 확인합니다.
-4. 전체 셀을 실행해 결과를 재현합니다.
-5. `PROFILE`과 `SEED`를 바꿔 다른 시나리오를 실험합니다.
-
----
-
-## 실행 환경
-
-- Google Colab (권장)
-- Python 3.10+
+| 역할 | 담당 |
+|------|------|
+| AI / 예측 엔진 | 신희조 |
+| Backend | 윤수연 |
+| Frontend (Mobile) | 박은수 |
 
 ---
 
 ## 한 줄 요약
 
-이 저장소는 **과거 소비 패턴을 예측하고, 그 결과를 오늘의 맞춤형 소비 챌린지로 연결하는 소비 습관 코칭 엔진 MVP**를 담고 있습니다.
+이 저장소는 **과거 소비 패턴을 예측하고, 그 결과를 오늘의 맞춤형 소비 챌린지로 연결하는 소비 습관 코칭 앱**의 풀스택 구현(React Native + FastAPI + Prophet + PostgreSQL)을 담고 있습니다.
