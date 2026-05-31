@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { deleteAccessToken } from '@/services/tokenStorage';
 import {
   Pressable,
   ScrollView,
@@ -102,6 +103,12 @@ export default function MyPageScreen() {
     setBudgetAlertEnabled(value);
     showToast(value ? '예산 알림을 켰어요.' : '예산 알림을 껐어요.');
   };
+
+  const handleLogout = async () => {
+  await deleteAccessToken();
+  showToast('로그아웃되었습니다.');
+  router.replace('/auth/login');
+};
 
   return (
     <LinearGradient
@@ -376,13 +383,10 @@ export default function MyPageScreen() {
             </Text>
           </View>
 
-          <Pressable
-            style={styles.logoutButton}
-            onPress={() => router.replace('/auth/login')}
-          >
-            <LogOut size={19} color={colors.text} strokeWidth={2.8} />
-            <Text style={styles.logoutText}>로그아웃</Text>
-          </Pressable>
+          <Pressable style={styles.logoutButton} onPress={handleLogout}>
+  <LogOut size={19} color={colors.text} strokeWidth={2.8} />
+  <Text style={styles.logoutText}>로그아웃</Text>
+</Pressable>
         </GlassCard>
       </ScrollView>
     </LinearGradient>

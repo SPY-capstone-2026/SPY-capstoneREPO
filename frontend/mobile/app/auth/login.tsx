@@ -51,8 +51,8 @@ function getLoginErrorMessage(error: unknown) {
 export default function LoginScreen() {
   const { showToast } = useToast();
 
-  const [email, setEmail] = useState('demo@moni.app');
-  const [password, setPassword] = useState('12345678');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
