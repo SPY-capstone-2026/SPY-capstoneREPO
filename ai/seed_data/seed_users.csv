@@ -1,2 +1,0 @@
-user_id,email,password_hash,income_type,payday,spend_profile,valid_data_start_date,total_xp,current_level,created_at
-user-office-001,office@moni.app,$dummy$,SALARY,25,STEADY,,0,1,2024-12-01T00:00:00
