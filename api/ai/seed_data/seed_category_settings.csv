@@ -1,0 +1,6 @@
+id,user_id,category_name,budget_limit,is_daily_challenge,alert_threshold
+1,user-office-001,카페,100000,True,0.8
+2,user-office-001,식비,400000,True,0.9
+3,user-office-001,의류,80000,True,0.8
+4,user-office-001,화장품,50000,True,0.8
+5,user-office-001,가전,100000,False,1.0
