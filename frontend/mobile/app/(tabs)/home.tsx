@@ -85,6 +85,7 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   const monthlySummary = report.monthly_summary;
+  const hasMonthlyTransactions = monthlySummary.transaction_count > 0;
 
   const missionMeta = getCategoryMeta(mission.category_name);
   const MissionIcon = missionMeta.Icon;
@@ -282,7 +283,9 @@ export default function HomeScreen() {
           />
 
           <Text style={styles.summaryMessage}>
-            {getFriendlyBudgetMessage(monthlySummary.budget_pressure)}
+            {hasMonthlyTransactions
+              ? getFriendlyBudgetMessage(monthlySummary.budget_pressure)
+              : '아직 이번 달 지출 기록이 없어요. 소비 탭에서 지출을 추가하면 월말 예상과 예산 상태가 표시됩니다.'}
           </Text>
 
           <View style={styles.metricList}>

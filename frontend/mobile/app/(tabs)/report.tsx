@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   BarChart3,
@@ -102,6 +102,8 @@ export default function ReportScreen() {
   const weeklyTrend = report.weekly_trend;
   const evaluatedCategories = report.evaluated_categories;
 
+  const hasMonthlyTransactions = monthlySummary.transaction_count > 0;
+
   const pressureTone = getBudgetTone(monthlySummary.budget_pressure);
   const pressureColor = getBudgetColor(monthlySummary.budget_pressure);
   const pressureBg = getBudgetBg(monthlySummary.budget_pressure);
@@ -118,7 +120,7 @@ export default function ReportScreen() {
   const budgetGap =
     monthlySummary.predicted_monthly_spend - monthlySummary.budget_limit;
 
-  const loadMonthlyReport = async () => {
+  const loadMonthlyReport = useCallback(async () => {
     try {
       setIsLoading(true);
 
@@ -136,12 +138,12 @@ export default function ReportScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useFocusEffect(
     useCallback(() => {
       loadMonthlyReport();
-    }, [])
+    }, [loadMonthlyReport])
   );
 
   return (
@@ -197,7 +199,9 @@ export default function ReportScreen() {
           />
 
           <Text style={styles.summaryMessage}>
-            {getFriendlyBudgetMessage(monthlySummary.budget_pressure)}
+            {hasMonthlyTransactions
+              ? getFriendlyBudgetMessage(monthlySummary.budget_pressure)
+              : '아직 이번 달 지출 기록이 없어요. 소비 탭에서 지출을 추가하면 월말 예상과 예산 상태가 표시됩니다.'}
           </Text>
 
           <View style={styles.metricList}>
@@ -265,51 +269,70 @@ export default function ReportScreen() {
             </View>
           </View>
 
-          <View style={styles.barChart}>
-            {weeklyTrend.map((item) => {
-              const isPeak = item.label === peakDay.label && item.amount > 0;
-              const barHeight =
-                item.amount > 0
-                  ? Math.max(10, Math.round((item.amount / maxWeeklyAmount) * 100))
-                  : 8;
+          {hasMonthlyTransactions ? (
+            <View style={styles.barChart}>
+              {weeklyTrend.map((item) => {
+                const isPeak = item.label === peakDay.label && item.amount > 0;
+                const barHeight =
+                  item.amount > 0
+                    ? Math.max(
+                        10,
+                        Math.round((item.amount / maxWeeklyAmount) * 100)
+                      )
+                    : 8;
 
-              return (
-                <View key={item.label} style={styles.barItem}>
-                  <View style={styles.barTrack}>
-                    <View
+                return (
+                  <View key={item.label} style={styles.barItem}>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          isPeak && styles.peakBarFill,
+                          {
+                            height: `${barHeight}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <Text
                       style={[
-                        styles.barFill,
-                        isPeak && styles.peakBarFill,
-                        {
-                          height: `${barHeight}%`,
-                        },
+                        styles.barAmount,
+                        isPeak && styles.peakBarAmount,
                       ]}
-                    />
+                    >
+                      {item.amount > 0
+                        ? `${Math.round(item.amount / 1000)}천`
+                        : '0'}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.barLabel,
+                        isPeak && styles.peakBarLabel,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
                   </View>
-
-                  <Text
-                    style={[
-                      styles.barAmount,
-                      isPeak && styles.peakBarAmount,
-                    ]}
-                  >
-                    {item.amount > 0
-                      ? `${Math.round(item.amount / 1000)}천`
-                      : '0'}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.barLabel,
-                      isPeak && styles.peakBarLabel,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.inlineEmptyBox}>
+              <LineChart
+                size={24}
+                color={colors.butterBrown}
+                strokeWidth={2.8}
+              />
+              <Text style={styles.inlineEmptyTitle}>
+                아직 요일별 흐름이 없어요.
+              </Text>
+              <Text style={styles.inlineEmptyDescription}>
+                소비 탭에서 지출을 추가하면 요일별 소비 리듬이 표시됩니다.
+              </Text>
+            </View>
+          )}
 
           <View style={styles.chartNote}>
             <Sparkles size={15} color={colors.butterDeep} strokeWidth={2.8} />
@@ -332,9 +355,11 @@ export default function ReportScreen() {
           <GlassCard delay={260} tone="soft">
             <View style={styles.emptyBox}>
               <Gauge size={24} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.emptyTitle}>표시할 항목이 아직 없어요.</Text>
+              <Text style={styles.emptyTitle}>
+                표시할 예산 상태가 아직 없어요.
+              </Text>
               <Text style={styles.emptyDescription}>
-                소비 탭에서 지출을 추가하면 항목별 예산 상태가 표시됩니다.
+                지출을 추가하면 카테고리별 예산 상태가 표시됩니다.
               </Text>
             </View>
           </GlassCard>
@@ -650,6 +675,25 @@ const styles = StyleSheet.create({
   },
   peakBarLabel: {
     color: colors.text,
+  },
+  inlineEmptyBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  inlineEmptyTitle: {
+    marginTop: 10,
+    marginBottom: 5,
+    fontFamily: typography.fontFamily,
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  inlineEmptyDescription: {
+    textAlign: 'center',
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.subText,
   },
   chartNote: {
     marginTop: 14,

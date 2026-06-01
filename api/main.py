@@ -592,11 +592,29 @@ def update_transaction_api(
             raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
 
         if req.tx_date is not None:
-            transaction.tx_date = req.tx_date
-
+            try:
+                if isinstance(req.tx_date, date):
+                    transaction.tx_date = req.tx_date
+                else:
+                    transaction.tx_date = date.fromisoformat(str(req.tx_date))
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="날짜 형식은 YYYY-MM-DD여야 합니다",
+                )
+    
         if req.tx_time is not None:
-            transaction.tx_time = req.tx_time
-
+            try:
+                if isinstance(req.tx_time, time):
+                    transaction.tx_time = req.tx_time
+                else:
+                    transaction.tx_time = time.fromisoformat(str(req.tx_time))
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="시간 형식은 HH:MM이어야 합니다",
+                )
+    
         if req.amount is not None:
             transaction.amount = req.amount
 

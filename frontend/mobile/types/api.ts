@@ -88,7 +88,15 @@ export type CreateTransactionResponse = {
   data: ApiTransaction;
 };
 
-export type UpdateTransactionRequest = Partial<CreateTransactionRequest>;
+export type UpdateTransactionRequest = {
+  tx_date?: string;
+  tx_time?: string;
+  amount?: number;
+  merchant_name?: string;
+  mydata_category?: string;
+  final_category?: string;
+  is_user_corrected?: boolean;
+};
 
 export type UpdateTransactionResponse = {
   status: 'success' | string;
