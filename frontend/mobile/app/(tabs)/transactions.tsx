@@ -94,6 +94,25 @@ function parseAmountInput(value: string) {
   return Number(value.replace(/[^0-9]/g, ''));
 }
 
+function getTodayDateString() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTimeString() {
+  const now = new Date();
+
+  const hour = String(now.getHours()).padStart(2, '0');
+  const minute = String(now.getMinutes()).padStart(2, '0');
+
+  return `${hour}:${minute}`;
+}
+
 export default function TransactionsScreen() {
   const mission = mockTodayChallenge;
   const { showToast } = useToast();
@@ -256,8 +275,8 @@ export default function TransactionsScreen() {
         showToast('지출 내역이 수정됐어요.');
       } else {
         const newTransaction = await createTransactionFromApi({
-          tx_date: mission.challenge_date,
-          tx_time: '12:00',
+          tx_date: getTodayDateString(),
+          tx_time: getCurrentTimeString(),
           amount: numericAmount,
           merchant_name: merchant.trim(),
           mydata_category: '직접 입력',

@@ -92,6 +92,30 @@ def ensure_default_category_settings(session: Session, user_id: str):
 
     return created
 
+def calculate_level(total_xp: int):
+    return max(1, (total_xp // 100) + 1)
+
+
+def serialize_user_progress(user: User):
+    return {
+        "user_id": user.user_id,
+        "total_xp": user.total_xp,
+        "current_level": user.current_level,
+    }
+
+def serialize_user_profile(user: User):
+    return {
+        "user_id": user.user_id,
+        "email": user.email,
+        "income_type": user.income_type,
+        "payday": user.payday,
+        "spend_profile": user.spend_profile,
+        "total_xp": user.total_xp,
+        "current_level": user.current_level,
+        "created_at": user.created_at.isoformat()
+        if user.created_at
+        else None,
+    }
 
 def serialize_challenge(challenge: DailyChallenge):
     return {
@@ -237,6 +261,15 @@ def build_evaluated_categories(category_settings, monthly_transactions, today: d
 
     return evaluated
 
+class UserUpdateRequest(BaseModel):
+    email: Optional[str] = None
+    income_type: Optional[str] = None
+    payday: Optional[int] = None
+    spend_profile: Optional[str] = None
+
+class ChallengeStatusUpdateRequest(BaseModel):
+    status: str
+
 class CategoryUpdateRequest(BaseModel):
     budget_limit: Optional[int] = None
     is_daily_challenge: Optional[bool] = None
@@ -305,9 +338,11 @@ def login(req: LoginRequest):
 def get_me(user_id: str = Depends(get_current_user_id)):
     with Session(engine) as session:
         user = session.get(User, user_id)
+
         if not user:
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
-        return {"user_id": user.user_id, "email": user.email}
+
+        return serialize_user_profile(user)
 
 # [API 4] 오늘의 챌린지 생성
 @app.get("/challenges/today")
@@ -642,4 +677,101 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
                 "weekly_trend": weekly_trend,
                 "evaluated_categories": evaluated_categories,
             },
+        }
+    
+@app.patch("/challenges/{challenge_id}/status")
+def update_challenge_status_api(
+    challenge_id: int,
+    req: ChallengeStatusUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    allowed_statuses = ["PENDING", "SUCCESS", "FAILED"]
+
+    if req.status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="올바르지 않은 상태입니다")
+
+    with Session(engine) as session:
+        challenge = session.get(DailyChallenge, challenge_id)
+
+        if not challenge:
+            raise HTTPException(status_code=404, detail="챌린지를 찾을 수 없습니다")
+
+        if challenge.user_id != user_id:
+            raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
+
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+        previous_status = challenge.status
+        challenge.status = req.status
+
+        if previous_status != "SUCCESS" and req.status == "SUCCESS":
+            user.total_xp += challenge.xp_reward
+
+        if previous_status == "SUCCESS" and req.status != "SUCCESS":
+            user.total_xp = max(0, user.total_xp - challenge.xp_reward)
+
+        user.current_level = calculate_level(user.total_xp)
+
+        session.add(challenge)
+        session.add(user)
+        session.commit()
+        session.refresh(challenge)
+        session.refresh(user)
+
+        return {
+            "status": "success",
+            "data": {
+                "challenge": serialize_challenge(challenge),
+                "user_progress": serialize_user_progress(user),
+            },
+        }
+    
+@app.patch("/me")
+def update_me_api(
+    req: UserUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+        if req.email is not None:
+            email = req.email.strip()
+
+            if not email:
+                raise HTTPException(status_code=400, detail="이메일을 입력해 주세요")
+
+            existing_user = session.exec(
+                select(User).where(User.email == email)
+            ).first()
+
+            if existing_user and existing_user.user_id != user_id:
+                raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다")
+
+            user.email = email
+
+        if req.income_type is not None:
+            user.income_type = req.income_type
+
+        if req.payday is not None:
+            if req.payday < 1 or req.payday > 31:
+                raise HTTPException(status_code=400, detail="수입일은 1일부터 31일 사이여야 합니다")
+
+            user.payday = req.payday
+
+        if req.spend_profile is not None:
+            user.spend_profile = req.spend_profile
+
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        return {
+            "status": "success",
+            "data": serialize_user_profile(user),
         }

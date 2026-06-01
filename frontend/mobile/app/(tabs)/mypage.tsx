@@ -1,12 +1,15 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { deleteAccessToken } from '@/services/tokenStorage';
+import { getCurrentUser, updateCurrentUser, } from '@/services/authService';
+import type { MeResponse } from '@/types/api';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
@@ -22,7 +25,7 @@ import {
   Trophy,
   UserRound,
 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
@@ -67,12 +70,63 @@ function getProfileMessage(profile: string) {
 }
 
 export default function MyPageScreen() {
-  const user = mockUserProfile;
+
+  const handleStartEditProfile = () => {
+    setEditEmail(user.email);
+    setEditIncomeType(user.income_type);
+    setEditPayday(String(user.payday));
+    setEditSpendProfile(user.spend_profile);
+    setIsEditingProfile(true);
+  };
+
+  const [user, setUser] = useState<MeResponse>({
+    user_id: '',
+    email: '',
+    income_type: 'STUDENT',
+    payday: 25,
+    spend_profile: 'IMPULSIVE',
+    total_xp: 0,
+    current_level: 1,
+    created_at: null,
+  });
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const [editEmail, setEditEmail] = useState('');
+  const [editIncomeType, setEditIncomeType] = useState('STUDENT');
+  const [editPayday, setEditPayday] = useState('25');
+  const [editSpendProfile, setEditSpendProfile] = useState('IMPULSIVE');
+
+  const loadUserProfile = async () => {
+    try {
+      setIsUserLoading(true);
+
+      const currentUser = await getCurrentUser();
+
+      setUser(currentUser);
+      setEditEmail(currentUser.email);
+      setEditIncomeType(currentUser.income_type);
+      setEditPayday(String(currentUser.payday));
+      setEditSpendProfile(currentUser.spend_profile);
+    } catch {
+      showToast('내 정보를 불러오지 못했어요.');
+    } finally {
+      setIsUserLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserProfile();
+    }, [])
+  );
+
+  const [isUserLoading, setIsUserLoading] = useState(false);
+
   const { showToast } = useToast();
 
   const {
-    currentXp,
-    currentLevel,
     currentStreak,
     weeklyCompletedCount,
     isTodayMissionCompleted,
@@ -82,12 +136,52 @@ export default function MyPageScreen() {
   const [missionReminderEnabled, setMissionReminderEnabled] = useState(true);
   const [budgetAlertEnabled, setBudgetAlertEnabled] = useState(true);
 
-  const levelGoal = 200;
-  const levelProgress = Math.min(currentXp / levelGoal, 1);
+  const currentXp = user.total_xp;
+  const currentLevel = user.current_level;
+  const levelBaseXp = Math.max(0, (currentLevel - 1) * 100);
+  const nextLevelXp = currentLevel * 100;
+  const levelProgress =
+    nextLevelXp > levelBaseXp
+      ? Math.min((currentXp - levelBaseXp) / (nextLevelXp - levelBaseXp), 1)
+      : 0;
+  const xpToNextLevel = Math.max(0, nextLevelXp - currentXp);
 
   const missionCategoryCount = mockCategorySettings.filter(
     (item) => item.is_daily_challenge
   ).length;
+
+  const handleSaveProfile = async () => {
+    const parsedPayday = Number(editPayday);
+
+    if (!editEmail.trim()) {
+      showToast('이메일을 입력해 주세요.');
+      return;
+    }
+
+    if (!Number.isInteger(parsedPayday) || parsedPayday < 1 || parsedPayday > 31) {
+      showToast('수입일은 1일부터 31일 사이로 입력해 주세요.');
+      return;
+    }
+
+    try {
+      setIsSavingProfile(true);
+
+      const updatedUser = await updateCurrentUser({
+        email: editEmail.trim(),
+        income_type: editIncomeType,
+        payday: parsedPayday,
+        spend_profile: editSpendProfile,
+      });
+
+      setUser(updatedUser);
+      setIsEditingProfile(false);
+      showToast('개인정보가 저장됐어요.');
+    } catch {
+      showToast('개인정보를 저장하지 못했어요.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handleTogglePush = (value: boolean) => {
     setPushEnabled(value);
@@ -126,7 +220,11 @@ export default function MyPageScreen() {
         <AppScreenHeader
           label="MY"
           title="내 소비 습관과 설정을 관리해요."
-          description="프로필, 미션 성장 상태, 알림 설정을 한곳에서 확인할 수 있습니다."
+          description={
+            isUserLoading
+              ? '내 정보를 불러오고 있어요.'
+              : '프로필, 미션 성장 상태, 알림 설정을 한곳에서 확인할 수 있습니다.'
+          }
           Icon={UserRound}
         />
 
@@ -183,9 +281,9 @@ export default function MyPageScreen() {
             <View>
               <Text style={styles.growthLevel}>Lv. {currentLevel}</Text>
               <Text style={styles.growthDescription}>
-                {currentXp >= levelGoal
+                {xpToNextLevel <= 0
                   ? '새로운 레벨에 도달했어요.'
-                  : `다음 레벨까지 ${levelGoal - currentXp} XP 남았습니다.`}
+                  : `다음 레벨까지 ${xpToNextLevel} XP 남았습니다.`}
               </Text>
             </View>
 
@@ -354,16 +452,108 @@ export default function MyPageScreen() {
             <Text style={styles.sectionTitle}>계정</Text>
           </View>
 
-          <Pressable style={styles.accountItem}>
-            <View>
-              <Text style={styles.accountTitle}>개인정보 관리</Text>
-              <Text style={styles.accountDescription}>
-                이메일과 기본 정보를 수정합니다.
-              </Text>
-            </View>
+                    <View style={styles.accountEditSection}>
+                      <Pressable style={styles.accountItem} onPress={handleStartEditProfile}>
+                        <View>
+                          <Text style={styles.accountTitle}>개인정보 관리</Text>
+                          <Text style={styles.accountDescription}>
+                            이메일과 기본 정보를 수정합니다.
+                          </Text>
+                        </View>
 
-            <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
-          </Pressable>
+                        <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
+                      </Pressable>
+
+                      {isEditingProfile ? (
+                        <View style={styles.editProfileBox}>
+                          <Text style={styles.editLabel}>이메일</Text>
+                          <TextInput
+                            style={styles.editInput}
+                            value={editEmail}
+                            onChangeText={setEditEmail}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            placeholder="이메일"
+                            placeholderTextColor={colors.mutedText}
+                          />
+
+                          <Text style={styles.editLabel}>수입 유형</Text>
+                          <View style={styles.editOptionRow}>
+                            {['STUDENT', 'EMPLOYEE'].map((option) => (
+                              <Pressable
+                                key={option}
+                                style={[
+                                  styles.editOptionButton,
+                                  editIncomeType === option && styles.selectedEditOptionButton,
+                                ]}
+                                onPress={() => setEditIncomeType(option)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.editOptionText,
+                                    editIncomeType === option && styles.selectedEditOptionText,
+                                  ]}
+                                >
+                                  {getIncomeTypeLabel(option)}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+
+                          <Text style={styles.editLabel}>수입일</Text>
+                          <TextInput
+                            style={styles.editInput}
+                            value={editPayday}
+                            onChangeText={setEditPayday}
+                            keyboardType="number-pad"
+                            placeholder="예: 25"
+                            placeholderTextColor={colors.mutedText}
+                          />
+
+                          <Text style={styles.editLabel}>소비 성향</Text>
+                          <View style={styles.editOptionColumn}>
+                            {['STEADY', 'IMPULSIVE', 'CYCLICAL'].map((option) => (
+                              <Pressable
+                                key={option}
+                                style={[
+                                  styles.editOptionButton,
+                                  editSpendProfile === option && styles.selectedEditOptionButton,
+                                ]}
+                                onPress={() => setEditSpendProfile(option)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.editOptionText,
+                                    editSpendProfile === option && styles.selectedEditOptionText,
+                                  ]}
+                                >
+                                  {getSpendProfileLabel(option)}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+
+                          <View style={styles.editActionRow}>
+                            <Pressable
+                              style={styles.cancelEditButton}
+                              onPress={() => setIsEditingProfile(false)}
+                            >
+                              <Text style={styles.cancelEditButtonText}>취소</Text>
+                            </Pressable>
+
+                            <Pressable
+                              style={styles.saveEditButton}
+                              onPress={handleSaveProfile}
+                              disabled={isSavingProfile}
+                            >
+                              <Text style={styles.saveEditButtonText}>
+                                {isSavingProfile ? '저장 중...' : '저장'}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
 
           <Pressable style={styles.accountItem}>
             <View>
@@ -505,6 +695,104 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   profileInfoValue: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+  },
+    profileEditButton: {
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: colors.butterStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  profileEditButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  editProfileBox: {
+    marginTop: 14,
+    gap: 9,
+  },
+  editLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.subText,
+  },
+  editInput: {
+    minHeight: 50,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.38)',
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    color: colors.text,
+  },
+  editOptionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editOptionColumn: {
+    gap: 8,
+  },
+  editOptionButton: {
+    minHeight: 44,
+    borderRadius: 16,
+    paddingHorizontal: 13,
+    backgroundColor: 'rgba(255,255,255,0.24)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.34)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedEditOptionButton: {
+    backgroundColor: colors.butterStrong,
+    borderColor: 'rgba(215,169,0,0.28)',
+  },
+  editOptionText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.subText,
+  },
+  selectedEditOptionText: {
+    color: colors.text,
+  },
+  editActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  cancelEditButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelEditButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.subText,
+  },
+  saveEditButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: colors.butterStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveEditButtonText: {
     fontFamily: typography.fontFamily,
     fontSize: 14,
     fontWeight: '900',
@@ -688,6 +976,12 @@ const styles = StyleSheet.create({
     gap: 12,
     alignItems: 'center',
   },
+  accountEditSection: {
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(122,111,91,0.12)',
+  paddingBottom: 12,
+  marginBottom: 2,
+},
   accountTitle: {
     fontFamily: typography.fontFamily,
     fontSize: 15,

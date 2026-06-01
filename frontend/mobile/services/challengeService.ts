@@ -1,6 +1,7 @@
 import {
   generateChallengesApi,
   getTodayChallengesApi,
+  updateChallengeStatusApi,
 } from '@/services/challengeApi';
 import type { ApiChallenge } from '@/types/api';
 import type {
@@ -126,4 +127,29 @@ export async function generateTodayChallengeFromApi() {
   }
 
   return mapApiChallengeToDailyChallenge(generatedResponse.data[0]);
+}
+
+export async function completeChallengeFromApi(challengeId: string) {
+  const response = await updateChallengeStatusApi(challengeId, {
+    status: 'SUCCESS',
+  });
+
+  return {
+    challenge: mapApiChallengeToDailyChallenge(response.data.challenge),
+    userProgress: response.data.user_progress,
+  };
+}
+
+export async function updateChallengeStatusFromApi(
+  challengeId: string,
+  status: 'PENDING' | 'SUCCESS' | 'FAILED'
+) {
+  const response = await updateChallengeStatusApi(challengeId, {
+    status,
+  });
+
+  return {
+    challenge: mapApiChallengeToDailyChallenge(response.data.challenge),
+    userProgress: response.data.user_progress,
+  };
 }

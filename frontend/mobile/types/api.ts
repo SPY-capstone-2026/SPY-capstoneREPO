@@ -25,6 +25,12 @@ export type LoginResponse = {
 export type MeResponse = {
   user_id: string;
   email: string;
+  income_type: string;
+  payday: number;
+  spend_profile: string;
+  total_xp: number;
+  current_level: number;
+  created_at?: string | null;
 };
 
 export type ApiChallenge = {
@@ -121,4 +127,34 @@ export type MonthlyReportResponse = {
     weekly_trend: ApiWeeklyTrendItem[];
     evaluated_categories: ApiReportEvaluatedCategory[];
   };
+};
+
+export type UpdateChallengeStatusRequest = {
+  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+};
+
+export type UserProgressResponse = {
+  user_id: string;
+  total_xp: number;
+  current_level: number;
+};
+
+export type UpdateChallengeStatusResponse = {
+  status: 'success' | string;
+  data: {
+    challenge: ApiChallenge;
+    user_progress: UserProgressResponse;
+  };
+};
+
+export type UpdateMeRequest = {
+  email?: string;
+  income_type?: string;
+  payday?: number;
+  spend_profile?: string;
+};
+
+export type UpdateMeResponse = {
+  status: 'success' | string;
+  data: MeResponse;
 };

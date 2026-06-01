@@ -6,6 +6,8 @@ import type {
   MeResponse,
   SignupRequest,
   SignupResponse,
+  UpdateMeRequest,
+  UpdateMeResponse,
 } from '@/types/api';
 
 export async function signupApi(payload: SignupRequest) {
@@ -34,6 +36,15 @@ export async function getMeApi() {
   return apiRequest<MeResponse>({
     path: '/me',
     method: 'GET',
+    auth: true,
+  });
+}
+
+export async function updateMeApi(payload: UpdateMeRequest) {
+  return apiRequest<UpdateMeResponse>({
+    path: '/me',
+    method: 'PATCH',
+    body: payload,
     auth: true,
   });
 }

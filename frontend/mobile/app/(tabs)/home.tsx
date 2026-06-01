@@ -1,31 +1,31 @@
-import { router } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router, useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
-  BadgeCheck,
   BarChart3,
   CalendarDays,
-  CreditCard,
-  Gauge,
+  ClipboardCheck,
   Plus,
+  ReceiptText,
   Sparkles,
-  Trophy,
+  TrendingUp,
   WalletCards,
 } from 'lucide-react-native';
 
-import { AnimatedButton } from '@/components/AnimatedButton';
 import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { mockTodayChallenge, mockTransactions } from '@/constants/mockAiResult';
-import { useMission } from '@/contexts/MissionContext';
-import {
-  formatWon,
-  getBudgetGap,
-} from '@/utils/aiFormat';
+import { mockTodayChallenge } from '@/constants/mockAiResult';
+import type { DailyChallenge } from '@/constants/mockTypes';
+import { useToast } from '@/contexts/ToastContext';
+import { getTodayChallengeFromApi } from '@/services/challengeService';
+import { getMonthlyReportFromApi } from '@/services/reportService';
+import type { MonthlyReportResponse } from '@/types/api';
+import { formatWon } from '@/utils/aiFormat';
 import {
   getBudgetBg,
   getBudgetColor,
@@ -36,29 +36,116 @@ import {
 } from '@/utils/budgetStatus';
 import { getCategoryMeta } from '@/utils/categoryMeta';
 
+type MonthlyReportData = MonthlyReportResponse['data'];
+
+const defaultReportData: MonthlyReportData = {
+  month: '',
+  monthly_summary: {
+    total_spend: 0,
+    budget_limit: 0,
+    predicted_monthly_spend: 0,
+    budget_pressure: 0,
+    transaction_count: 0,
+  },
+  weekly_trend: [
+    { label: '월', amount: 0 },
+    { label: '화', amount: 0 },
+    { label: '수', amount: 0 },
+    { label: '목', amount: 0 },
+    { label: '금', amount: 0 },
+    { label: '토', amount: 0 },
+    { label: '일', amount: 0 },
+  ],
+  evaluated_categories: [],
+};
+
+function getTodayLabel() {
+  const now = new Date();
+
+  return `${now.getMonth() + 1}월 ${now.getDate()}일`;
+}
+
+function getMissionStatusText(mission: DailyChallenge) {
+  if (mission.status === 'SUCCESS') {
+    return '완료';
+  }
+
+  if (mission.status === 'FAILED') {
+    return '종료';
+  }
+
+  return '진행 중';
+}
+
 export default function HomeScreen() {
-  const mission = mockTodayChallenge;
-  const metadata = mission.ai_metadata;
+  const { showToast } = useToast();
+
+  const [mission, setMission] = useState<DailyChallenge>(mockTodayChallenge);
+  const [report, setReport] = useState<MonthlyReportData>(defaultReportData);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const monthlySummary = report.monthly_summary;
 
   const missionMeta = getCategoryMeta(mission.category_name);
   const MissionIcon = missionMeta.Icon;
 
-  const {
-    isTodayMissionCompleted,
-    currentXp,
-    currentLevel,
-  } = useMission();
+  const pressureTone = getBudgetTone(monthlySummary.budget_pressure);
+  const pressureColor = getBudgetColor(monthlySummary.budget_pressure);
+  const pressureBg = getBudgetBg(monthlySummary.budget_pressure);
+  const pressureLabel = getBudgetLabel(monthlySummary.budget_pressure);
 
-  const pressureTone = getBudgetTone(metadata.budget_pressure);
-  const pressureColor = getBudgetColor(metadata.budget_pressure);
-  const pressureLabel = getBudgetLabel(metadata.budget_pressure);
-  const pressureBg = getBudgetBg(metadata.budget_pressure);
+  const budgetGap =
+    monthlySummary.predicted_monthly_spend - monthlySummary.budget_limit;
 
-  const budgetGap = getBudgetGap(mission);
+  const dailyAverage = useMemo(() => {
+    const today = new Date().getDate();
 
-  const todaySpend = mockTransactions
-    .filter((transaction) => transaction.tx_date === mission.challenge_date)
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    if (today <= 0) {
+      return 0;
+    }
+
+    return Math.round(monthlySummary.total_spend / today);
+  }, [monthlySummary.total_spend]);
+
+  const loadHomeData = async () => {
+    try {
+      setIsLoading(true);
+
+      const [missionResult, reportResult] = await Promise.allSettled([
+        getTodayChallengeFromApi(),
+        getMonthlyReportFromApi(),
+      ]);
+
+      if (missionResult.status === 'fulfilled') {
+        setMission(missionResult.value);
+      }
+
+      if (reportResult.status === 'fulfilled') {
+        setReport({
+          ...reportResult.value,
+          weekly_trend:
+            reportResult.value.weekly_trend.length > 0
+              ? reportResult.value.weekly_trend
+              : defaultReportData.weekly_trend,
+        });
+      }
+
+      if (
+        missionResult.status === 'rejected' ||
+        reportResult.status === 'rejected'
+      ) {
+        showToast('홈 정보를 일부 불러오지 못했어요.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHomeData();
+    }, [])
+  );
 
   return (
     <LinearGradient
@@ -74,86 +161,78 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <AppScreenHeader
-          label="TODAY"
-          title={
-            isTodayMissionCompleted
-              ? '오늘 미션을 완료했어요.'
-              : `${mission.category_name} 소비를 조금만 조심해 볼까요?`
-          }
+          label="HOME"
+          title="오늘의 소비 흐름을 확인해요."
           description={
-            isTodayMissionCompleted
-              ? '좋은 흐름입니다. 오늘의 지출만 가볍게 확인하면 됩니다.'
-              : '오늘 가장 먼저 관리하면 좋은 소비 항목을 Moni가 골라봤어요.'
+            isLoading
+              ? '오늘의 미션과 이번 달 지출 흐름을 불러오고 있어요.'
+              : `${getTodayLabel()} 기준으로 정리했습니다.`
           }
-          Icon={isTodayMissionCompleted ? BadgeCheck : Sparkles}
+          Icon={Sparkles}
         />
 
-        <GlassCard delay={80} tone="butter" style={styles.primaryCard}>
-          <View style={styles.primaryTopRow}>
-            <View
-              style={[
-                styles.primaryIconBubble,
-                isTodayMissionCompleted && styles.completedIconBubble,
-              ]}
-            >
-              {isTodayMissionCompleted ? (
-                <BadgeCheck size={30} color={colors.text} strokeWidth={2.8} />
-              ) : (
-                <MissionIcon size={29} color={colors.text} strokeWidth={2.8} />
-              )}
+        <GlassCard delay={80} tone="butter" style={styles.missionCard}>
+          <View style={styles.missionTopRow}>
+            <View style={styles.missionIconBubble}>
+              <MissionIcon size={30} color={colors.text} strokeWidth={2.8} />
             </View>
 
-            <View style={styles.primaryTextBox}>
-              <Text style={styles.cardLabel}>
-                {isTodayMissionCompleted ? '완료한 미션' : '오늘의 미션'}
-              </Text>
+            <View style={styles.missionTextBox}>
+              <View style={styles.missionLabelRow}>
+                <Text style={styles.cardLabel}>오늘의 미션</Text>
+                <Text style={styles.missionStatus}>
+                  {getMissionStatusText(mission)}
+                </Text>
+              </View>
 
-              <Text style={styles.primaryTitle}>
-                {isTodayMissionCompleted
-                  ? '오늘의 미션을 완료했습니다.'
-                  : mission.challenge_text}
-              </Text>
+              <Text style={styles.missionTitle}>{mission.challenge_text}</Text>
             </View>
           </View>
 
-          <View style={styles.compactInfoRow}>
-            <View style={styles.compactInfoItem}>
-              <Text style={styles.compactLabel}>보상</Text>
-              <Text style={styles.compactValue}>
-                +{mission.xp_reward} XP
-              </Text>
+          <View style={styles.missionMetaRow}>
+            <View style={styles.missionMetaItem}>
+              <Text style={styles.metaLabel}>항목</Text>
+              <Text style={styles.metaValue}>{mission.category_name}</Text>
             </View>
 
-            <View style={styles.compactInfoItem}>
-              <Text style={styles.compactLabel}>성장</Text>
-              <Text style={styles.compactValue}>
-                Lv. {currentLevel} · {currentXp} XP
-              </Text>
+            <View style={styles.missionMetaItem}>
+              <Text style={styles.metaLabel}>난이도</Text>
+              <Text style={styles.metaValue}>{mission.difficulty}</Text>
+            </View>
+
+            <View style={styles.missionMetaItem}>
+              <Text style={styles.metaLabel}>보상</Text>
+              <Text style={styles.metaValue}>+{mission.xp_reward} XP</Text>
             </View>
           </View>
 
-          <AnimatedButton
-            title={isTodayMissionCompleted ? '미션 다시 보기' : '미션 하러가기'}
+          <Pressable
+            style={styles.cardButton}
             onPress={() => router.push('/(tabs)/challenge')}
-            style={styles.primaryButton}
-          />
+          >
+            <Text style={styles.cardButtonText}>미션 확인하기</Text>
+            <ArrowRight size={17} color={colors.text} strokeWidth={2.8} />
+          </Pressable>
         </GlassCard>
 
-        <View style={styles.quickSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>빠른 실행</Text>
+          <Text style={styles.sectionSubtitle}>
+            자주 쓰는 기능을 바로 열 수 있어요.
+          </Text>
+        </View>
+
+        <View style={styles.quickGrid}>
           <Pressable
             style={styles.quickCard}
             onPress={() => router.push('/(tabs)/transactions')}
           >
             <View style={styles.quickIconBubble}>
-              <Plus size={20} color={colors.text} strokeWidth={2.8} />
+              <Plus size={21} color={colors.text} strokeWidth={2.8} />
             </View>
 
-            <View style={styles.quickTextBox}>
-              <Text style={styles.quickTitle}>지출 추가</Text>
-              <Text style={styles.quickDescription}>방금 쓴 돈 기록</Text>
-            </View>
-
-            <ArrowRight size={17} color={colors.butterBrown} strokeWidth={2.8} />
+            <Text style={styles.quickTitle}>지출 추가</Text>
+            <Text style={styles.quickDescription}>방금 쓴 돈 기록</Text>
           </Pressable>
 
           <Pressable
@@ -161,29 +240,25 @@ export default function HomeScreen() {
             onPress={() => router.push('/(tabs)/report')}
           >
             <View style={styles.quickIconBubble}>
-              <BarChart3 size={20} color={colors.text} strokeWidth={2.8} />
+              <BarChart3 size={21} color={colors.text} strokeWidth={2.8} />
             </View>
 
-            <View style={styles.quickTextBox}>
-              <Text style={styles.quickTitle}>리포트 보기</Text>
-              <Text style={styles.quickDescription}>이번 달 흐름 확인</Text>
-            </View>
-
-            <ArrowRight size={17} color={colors.butterBrown} strokeWidth={2.8} />
+            <Text style={styles.quickTitle}>리포트</Text>
+            <Text style={styles.quickDescription}>이번 달 흐름 보기</Text>
           </Pressable>
         </View>
 
-        <GlassCard delay={170} style={styles.monthCard}>
+        <GlassCard delay={180} style={styles.summaryCard}>
           <View style={styles.sectionTitleRow}>
-            <Gauge size={18} color={colors.butterDeep} strokeWidth={2.8} />
+            <WalletCards size={18} color={colors.butterDeep} strokeWidth={2.8} />
             <Text style={styles.sectionTitle}>이번 달 한눈에 보기</Text>
           </View>
 
-          <View style={styles.monthTopRow}>
+          <View style={styles.summaryTopRow}>
             <View>
               <Text style={styles.cardLabel}>월말 예상 지출</Text>
-              <Text style={styles.monthValue}>
-                {formatWon(metadata.predicted_monthly_spend)}
+              <Text style={styles.summaryValue}>
+                {formatWon(monthlySummary.predicted_monthly_spend)}
               </Text>
             </View>
 
@@ -197,71 +272,64 @@ export default function HomeScreen() {
           <View style={styles.progressInfoRow}>
             <Text style={styles.progressLabel}>예산 사용 예상</Text>
             <Text style={[styles.progressValue, { color: pressureColor }]}>
-              {getBudgetSignalText(metadata.budget_pressure)}
+              {getBudgetSignalText(monthlySummary.budget_pressure)}
             </Text>
           </View>
 
           <AnimatedProgressBar
-            progress={metadata.budget_pressure}
+            progress={monthlySummary.budget_pressure}
             tone={pressureTone}
           />
 
-          <Text style={styles.monthMessage}>
-            {getFriendlyBudgetMessage(metadata.budget_pressure)}
+          <Text style={styles.summaryMessage}>
+            {getFriendlyBudgetMessage(monthlySummary.budget_pressure)}
           </Text>
 
-          <View style={styles.monthMetricList}>
-            <View style={styles.monthMetricItem}>
-              <CreditCard
+          <View style={styles.metricList}>
+            <View style={styles.metricItem}>
+              <ReceiptText
                 size={16}
                 color={colors.butterBrown}
                 strokeWidth={2.8}
               />
-              <Text style={styles.monthMetricLabel}>오늘 지출</Text>
-              <Text style={styles.monthMetricValue}>{formatWon(todaySpend)}</Text>
+              <Text style={styles.metricLabel}>현재 기록</Text>
+              <Text style={styles.metricValue}>
+                {formatWon(monthlySummary.total_spend)}
+              </Text>
             </View>
 
-            <View style={styles.monthMetricItem}>
+            <View style={styles.metricItem}>
+              <TrendingUp
+                size={16}
+                color={colors.butterBrown}
+                strokeWidth={2.8}
+              />
+              <Text style={styles.metricLabel}>하루 평균</Text>
+              <Text style={styles.metricValue}>{formatWon(dailyAverage)}</Text>
+            </View>
+
+            <View style={styles.metricItem}>
               <CalendarDays
                 size={16}
                 color={colors.butterBrown}
                 strokeWidth={2.8}
               />
-              <Text style={styles.monthMetricLabel}>남은 기간 예상</Text>
-              <Text style={styles.monthMetricValue}>
-                {formatWon(metadata.predicted_remaining_spend)}
-              </Text>
-            </View>
-
-            <View style={styles.monthMetricItem}>
-              <WalletCards
-                size={16}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-              <Text style={styles.monthMetricLabel}>
+              <Text style={styles.metricLabel}>
                 {budgetGap >= 0 ? '초과 예상' : '여유 예상'}
               </Text>
-              <Text style={styles.monthMetricValue}>
+              <Text style={styles.metricValue}>
                 {formatWon(Math.abs(budgetGap))}
               </Text>
             </View>
           </View>
-        </GlassCard>
 
-        <GlassCard delay={450} tone="soft" style={styles.bottomGuideCard}>
-          <View style={styles.bottomGuideRow}>
-            <View style={styles.bottomGuideIconBubble}>
-              <Trophy size={21} color={colors.text} strokeWidth={2.8} />
-            </View>
-
-            <View style={styles.bottomGuideTextBox}>
-              <Text style={styles.bottomGuideTitle}>오늘은 이것만 보면 돼요</Text>
-              <Text style={styles.bottomGuideDescription}>
-                미션 완료 여부, 오늘 지출, 이번 달 예상 흐름만 확인하면 충분합니다.
-              </Text>
-            </View>
-          </View>
+          <Pressable
+            style={styles.cardButton}
+            onPress={() => router.push('/(tabs)/report')}
+          >
+            <Text style={styles.cardButtonText}>자세히 보기</Text>
+            <ArrowRight size={17} color={colors.text} strokeWidth={2.8} />
+          </Pressable>
         </GlassCard>
       </ScrollView>
     </LinearGradient>
@@ -283,7 +351,7 @@ const styles = StyleSheet.create({
   },
   backgroundOrbSmall: {
     position: 'absolute',
-    top: 190,
+    top: 210,
     left: -64,
     width: 160,
     height: 160,
@@ -292,8 +360,8 @@ const styles = StyleSheet.create({
   },
   backgroundOrbTiny: {
     position: 'absolute',
-    top: 430,
-    right: 28,
+    top: 520,
+    right: 34,
     width: 76,
     height: 76,
     borderRadius: 999,
@@ -303,15 +371,15 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 128,
   },
-  primaryCard: {
+  missionCard: {
     backgroundColor: 'rgba(255,248,216,0.42)',
   },
-  primaryTopRow: {
+  missionTopRow: {
     flexDirection: 'row',
     gap: 14,
     marginBottom: 16,
   },
-  primaryIconBubble: {
+  missionIconBubble: {
     width: 62,
     height: 62,
     borderRadius: 24,
@@ -319,20 +387,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  completedIconBubble: {
-    backgroundColor: colors.successBg,
-  },
-  primaryTextBox: {
+  missionTextBox: {
     flex: 1,
+  },
+  missionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 6,
   },
   cardLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
     fontWeight: '800',
     color: colors.subText,
-    marginBottom: 6,
   },
-  primaryTitle: {
+  missionStatus: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: colors.butterPale,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.butterBrown,
+  },
+  missionTitle: {
     fontFamily: typography.fontFamily,
     fontSize: 23,
     lineHeight: 31,
@@ -340,74 +422,48 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: -0.6,
   },
-  compactInfoRow: {
-    flexDirection: 'row',
-    gap: 22,
+  missionMetaRow: {
     paddingTop: 14,
-    marginBottom: 16,
     borderTopWidth: 1,
     borderTopColor: 'rgba(122,111,91,0.14)',
+    flexDirection: 'row',
+    gap: 14,
   },
-  compactInfoItem: {
+  missionMetaItem: {
     flex: 1,
   },
-  compactLabel: {
+  metaLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '800',
     color: colors.subText,
     marginBottom: 5,
   },
-  compactValue: {
+  metaValue: {
     fontFamily: typography.fontFamily,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     color: colors.text,
   },
-  primaryButton: {
-    marginTop: 2,
-  },
-  quickSection: {
-    gap: 10,
-    marginBottom: 14,
-  },
-  quickCard: {
-    minHeight: 68,
-    borderRadius: 23,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(255,255,255,0.34)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.42)',
+  cardButton: {
+    height: 50,
+    borderRadius: 19,
+    backgroundColor: colors.butterStrong,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  quickIconBubble: {
-    width: 41,
-    height: 41,
-    borderRadius: 17,
-    backgroundColor: colors.butterPale,
-    alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    marginTop: 15,
   },
-  quickTextBox: {
-    flex: 1,
-  },
-  quickTitle: {
+  cardButtonText: {
     fontFamily: typography.fontFamily,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
     color: colors.text,
-    marginBottom: 4,
   },
-  quickDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  monthCard: {
-    backgroundColor: 'rgba(255,255,255,0.36)',
+  sectionHeader: {
+    marginTop: 8,
+    marginBottom: 12,
   },
   sectionTitleRow: {
     flexDirection: 'row',
@@ -422,16 +478,69 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 5,
   },
-  monthTopRow: {
+  sectionSubtitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.subText,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  quickCard: {
+    flex: 1,
+    minHeight: 126,
+    borderRadius: 25,
+    padding: 15,
+    backgroundColor: 'rgba(255,255,255,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.42)',
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 9,
+    },
+    elevation: 3,
+  },
+  quickIconBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: 17,
+    backgroundColor: colors.butterPale,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  quickTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    marginBottom: 5,
+  },
+  quickDescription: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.subText,
+  },
+  summaryCard: {
+    backgroundColor: 'rgba(255,255,255,0.36)',
+  },
+  summaryTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 14,
     alignItems: 'flex-start',
     marginBottom: 18,
   },
-  monthValue: {
+  summaryValue: {
     fontFamily: typography.fontFamily,
-    fontSize: 32,
+    fontSize: 33,
     fontWeight: '900',
     color: colors.text,
     letterSpacing: -0.8,
@@ -465,18 +574,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  monthMessage: {
+  summaryMessage: {
     marginTop: 12,
     fontFamily: typography.fontFamily,
     fontSize: 14,
     lineHeight: 21,
     color: colors.subText,
   },
-  monthMetricList: {
+  metricList: {
     marginTop: 15,
     gap: 8,
   },
-  monthMetricItem: {
+  metricItem: {
     minHeight: 54,
     borderRadius: 18,
     paddingHorizontal: 13,
@@ -487,107 +596,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  monthMetricLabel: {
+  metricLabel: {
     flex: 1,
     fontFamily: typography.fontFamily,
     fontSize: 13,
     color: colors.subText,
   },
-  monthMetricValue: {
+  metricValue: {
     fontFamily: typography.fontFamily,
     fontSize: 14,
     fontWeight: '900',
     color: colors.text,
-  },
-  sectionHeader: {
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  sectionSubtitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.subText,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  categoryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  categoryIconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 17,
-    backgroundColor: colors.butterPale,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryCategoryIconBubble: {
-    backgroundColor: colors.butterStrong,
-  },
-  categoryTextBox: {
-    flex: 1,
-  },
-  categoryName: {
-    fontFamily: typography.fontFamily,
-    fontSize: 17,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  categoryMeta: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    color: colors.subText,
-  },
-  categoryBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  categoryBadgeText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  bottomGuideCard: {
-    backgroundColor: 'rgba(255,251,240,0.34)',
-  },
-  bottomGuideRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  bottomGuideIconBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 18,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomGuideTextBox: {
-    flex: 1,
-  },
-  bottomGuideTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  bottomGuideDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.subText,
   },
 });

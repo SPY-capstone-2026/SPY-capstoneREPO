@@ -1,5 +1,6 @@
-import { getMeApi, loginApi, signupApi } from '@/services/authApi';
+import { getMeApi, loginApi, signupApi, updateMeApi } from '@/services/authApi';
 import { deleteAccessToken } from '@/services/tokenStorage';
+import type { UpdateMeRequest } from '@/types/api';
 
 export async function signupUser(email: string, password: string) {
   return signupApi({
@@ -21,4 +22,10 @@ export async function getCurrentUser() {
 
 export async function logoutUser() {
   await deleteAccessToken();
+}
+
+export async function updateCurrentUser(payload: UpdateMeRequest) {
+  const response = await updateMeApi(payload);
+
+  return response.data;
 }

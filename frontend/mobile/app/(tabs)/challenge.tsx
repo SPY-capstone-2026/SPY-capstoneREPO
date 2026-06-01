@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   getTodayChallengeFromApi,
+  updateChallengeStatusFromApi,
 } from '@/services/challengeService';
 import {
   Modal,
@@ -46,9 +47,11 @@ import { getCategoryMeta } from '@/utils/categoryMeta';
 export default function ChallengeScreen() {
   const [mission, setMission] = useState(mockTodayChallenge);
   const [isChallengeLoading, setIsChallengeLoading] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const hasLoadedChallengeRef = useRef(false);
 
   const metadata = mission.ai_metadata;
+  const isCurrentMissionCompleted = mission.status === 'SUCCESS';
 
   const missionMeta = getCategoryMeta(mission.category_name);
   const MissionIcon = missionMeta.Icon;
@@ -56,10 +59,11 @@ export default function ChallengeScreen() {
   const [isSuccessModalVisible, setIsSuccessModalVisible] = useState(false);
 
   const {
-    isTodayMissionCompleted,
+    completeTodayMission,
+    currentXp,
+    currentLevel,
     currentStreak,
     weeklyCompletedCount,
-    completeTodayMission,
   } = useMission();
 
   const { showToast } = useToast();
@@ -96,15 +100,34 @@ useEffect(() => {
   loadTodayChallenge();
 }, []);
 
-  const handleCompleteMission = () => {
-    if (isTodayMissionCompleted) {
-      showToast('이미 오늘의 미션을 완료했어요.');
+  const handleCompleteMission = async () => {
+    if (isCompleting) {
       return;
     }
 
-    completeTodayMission();
-    showToast(`미션 완료! +${mission.xp_reward} XP가 쌓였어요.`);
-    setIsSuccessModalVisible(true);
+    try {
+      setIsCompleting(true);
+
+      const nextStatus = mission.status === 'SUCCESS' ? 'PENDING' : 'SUCCESS';
+
+      const result = await updateChallengeStatusFromApi(
+        mission.challenge_id,
+        nextStatus
+      );
+
+      setMission(result.challenge);
+
+      if (nextStatus === 'SUCCESS') {
+        completeTodayMission();
+        showToast(`성공! +${result.challenge.xp_reward} XP가 반영됐어요.`);
+      } else {
+        showToast('미션 완료를 취소했어요.');
+      }
+    } catch {
+      showToast('미션 상태를 저장하지 못했어요.');
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   return (
@@ -123,16 +146,16 @@ useEffect(() => {
         <AppScreenHeader
           label="MISSION"
           title={
-            isTodayMissionCompleted
+            isCurrentMissionCompleted
               ? '오늘 미션을 완료했어요.'
               : '오늘의 소비 미션을 확인해 보세요.'
           }
           description={
-            isTodayMissionCompleted
+            isCurrentMissionCompleted
               ? '연속 성공 기록이 이어지고 있어요. 내일도 작은 목표부터 이어가면 됩니다.'
               : '오늘 하루 실천하면 예산 흐름과 소비 습관을 함께 관리할 수 있어요.'
           }
-          Icon={isTodayMissionCompleted ? BadgeCheck : ClipboardCheck}
+          Icon={isCurrentMissionCompleted ? BadgeCheck : ClipboardCheck}
         />
 
         <GlassCard delay={80} tone="butter" style={styles.missionCard}>
@@ -140,10 +163,10 @@ useEffect(() => {
             <View
               style={[
                 styles.missionIconBubble,
-                isTodayMissionCompleted && styles.completedMissionIconBubble,
+                isCurrentMissionCompleted && styles.completedMissionIconBubble,
               ]}
             >
-              {isTodayMissionCompleted ? (
+              {isCurrentMissionCompleted ? (
                 <BadgeCheck size={30} color={colors.text} strokeWidth={2.8} />
               ) : (
                 <MissionIcon size={29} color={colors.text} strokeWidth={2.8} />
@@ -152,11 +175,11 @@ useEffect(() => {
 
             <View style={styles.missionTextBox}>
               <Text style={styles.cardLabel}>
-                {isTodayMissionCompleted ? '완료한 미션' : '오늘의 미션'}
+                {isCurrentMissionCompleted ? '완료한 미션' : '오늘의 미션'}
               </Text>
 
               <Text style={styles.missionTitle}>
-                {isTodayMissionCompleted
+                {isCurrentMissionCompleted
                   ? '오늘의 미션을 완료했습니다.'
                   : mission.challenge_text}
               </Text>
@@ -164,33 +187,36 @@ useEffect(() => {
           </View>
 
           <Pressable
-            disabled={isTodayMissionCompleted}
+            disabled={isCompleting}
             style={[
               styles.completeRow,
-              isTodayMissionCompleted && styles.completedRow,
+              isCurrentMissionCompleted && styles.completedRow,
             ]}
             onPress={handleCompleteMission}
           >
             <View
               style={[
                 styles.checkBox,
-                isTodayMissionCompleted && styles.completedCheckBox,
+                isCurrentMissionCompleted && styles.completedCheckBox,
               ]}
             >
-              {isTodayMissionCompleted ? (
+              {isCurrentMissionCompleted ? (
                 <Check size={20} color={colors.text} strokeWidth={3} />
               ) : null}
             </View>
 
             <View style={styles.completeTextBox}>
               <Text style={styles.completeTitle}>
-                {isTodayMissionCompleted
-                  ? '완료 처리됨'
-                  : '완료했다면 체크해 주세요'}
+                {isCurrentMissionCompleted
+                  ? '완료됨'
+                  : isCompleting
+                    ? '상태 저장 중...'
+                    : '완료했다면 체크해 주세요'}
               </Text>
+
               <Text style={styles.completeDescription}>
-                {isTodayMissionCompleted
-                  ? `+${mission.xp_reward} XP가 반영되었습니다.`
+                {isCurrentMissionCompleted
+                  ? '다시 누르면 완료를 취소할 수 있어요.'
                   : `체크하면 +${mission.xp_reward} XP와 연속 성공 기록이 쌓입니다.`}
               </Text>
             </View>
