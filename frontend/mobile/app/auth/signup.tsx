@@ -28,6 +28,7 @@ import { typography } from '@/constants/typography';
 import { useToast } from '@/contexts/ToastContext';
 import { ApiError } from '@/services/apiClient';
 import { signupApi } from '@/services/authApi';
+import { signupUser } from '@/services/authService';
 
 const incomeOptions = [
   {
@@ -104,9 +105,17 @@ export default function SignupScreen() {
     try {
       setIsLoading(true);
 
-      await signupApi({
-        email: email.trim(),
-        password,
+      const parsedPayday = Number(payday);
+
+      if (!Number.isInteger(parsedPayday) || parsedPayday < 1 || parsedPayday > 31) {
+        showToast('수입일은 1일부터 31일 사이로 입력해 주세요.');
+        return;
+      }
+
+      await signupUser(email.trim(), password, {
+        income_type: incomeType,
+        payday: parsedPayday,
+        spend_profile: spendProfile,
       });
 
       showToast('회원가입이 완료되었습니다. 로그인해 주세요.');

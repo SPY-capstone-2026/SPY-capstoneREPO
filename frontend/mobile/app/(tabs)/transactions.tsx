@@ -33,12 +33,10 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import {
   mockCategorySettings,
-  mockTodayChallenge,
-  mockTransactions,
 } from '@/constants/mockAiResult';
 import type { CategorySetting, Transaction } from '@/constants/mockTypes';
 import { useToast } from '@/contexts/ToastContext';
-import { formatWon, sortEvaluatedCategories } from '@/utils/aiFormat';
+import { formatWon, } from '@/utils/aiFormat';
 import {
   getBudgetBg,
   getBudgetColor,
@@ -54,6 +52,10 @@ import {
   updateTransactionFromApi,
 } from '@/services/transactionService';
 import { getCategoryMeta } from '@/utils/categoryMeta';
+import {
+  getCategoriesFromApi,
+  updateCategoryFromApi,
+} from '@/services/categoryService';
 
 const importedTransactions: Transaction[] = [
   {
@@ -94,6 +96,11 @@ function parseAmountInput(value: string) {
   return Number(value.replace(/[^0-9]/g, ''));
 }
 
+function getBudgetInputValue(value: number) {
+  if (!value) return '';
+  return String(value);
+}
+
 function getTodayDateString() {
   const now = new Date();
 
@@ -114,12 +121,7 @@ function getCurrentTimeString() {
 }
 
 export default function TransactionsScreen() {
-  const mission = mockTodayChallenge;
   const { showToast } = useToast();
-
-  const evaluatedCategories = sortEvaluatedCategories(
-    mission.ai_metadata.evaluated_categories
-  );
 
   const [isTransactionLoading, setIsTransactionLoading] = useState(false);
 
@@ -134,6 +136,20 @@ export default function TransactionsScreen() {
     null
   );
 
+  const [selectedBudgetCategoryId, setSelectedBudgetCategoryId] = useState<
+    string | null
+  >(null);
+  const [editBudgetLimit, setEditBudgetLimit] = useState('');
+  const [editAlertThreshold, setEditAlertThreshold] = useState('80');
+  const [editIsDailyChallenge, setEditIsDailyChallenge] = useState(false);
+  const [isCategorySaving, setIsCategorySaving] = useState(false);
+  const [isCategoryLoading, setIsCategoryLoading] = useState(false);
+
+  const selectedBudgetCategory =
+    categories.find((category) => category.id === selectedBudgetCategoryId) ??
+    categories[selectedCategoryIndex] ??
+    null;
+
   const [merchant, setMerchant] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [category, setCategory] = useState(
@@ -143,10 +159,53 @@ export default function TransactionsScreen() {
   const selectedCategory = categories[selectedCategoryIndex];
   const selectedCategoryMeta = getCategoryMeta(selectedCategory.category_name);
   const SelectedCategoryIcon = selectedCategoryMeta.Icon;
+  const selectedCategoryBudgetStatus = useMemo(() => {
+    if (!selectedCategory) {
+      return {
+        actualSpend: 0,
+        predictedMonthlySpend: 0,
+        budgetPressure: 0,
+        budgetGap: 0,
+      };
+    }
 
-  const selectedEvaluation = evaluatedCategories.find(
-    (item) => item.category_name === selectedCategory.category_name
-  );
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const today = now.getDate();
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+    const actualSpend = transactions
+      .filter((transaction) => {
+        const [year, month] = transaction.tx_date.split('-').map(Number);
+
+        return (
+          year === currentYear &&
+          month === currentMonth &&
+          transaction.final_category === selectedCategory.category_name
+        );
+      })
+      .reduce((total, transaction) => total + transaction.amount, 0);
+
+    const predictedMonthlySpend =
+      actualSpend > 0 && today > 0
+        ? Math.round((actualSpend / today) * daysInMonth)
+        : 0;
+
+    const budgetPressure =
+      selectedCategory.budget_limit > 0
+        ? predictedMonthlySpend / selectedCategory.budget_limit
+        : 0;
+
+    const budgetGap = predictedMonthlySpend - selectedCategory.budget_limit;
+
+    return {
+      actualSpend,
+      predictedMonthlySpend,
+      budgetPressure,
+      budgetGap,
+    };
+  }, [transactions, selectedCategory]);
 
   const recentTransactions = useMemo(
     () => transactions.slice(0, 6),
@@ -158,27 +217,12 @@ export default function TransactionsScreen() {
     [transactions]
   );
 
-  const selectedActualSpend = useMemo(
-    () =>
-      transactions
-        .filter(
-          (transaction) =>
-            transaction.final_category === selectedCategory.category_name
-        )
-        .reduce((sum, item) => sum + item.amount, 0),
-    [selectedCategory.category_name, transactions]
-  );
-
   const missionCategoryCount = useMemo(
     () => categories.filter((item) => item.is_daily_challenge).length,
     [categories]
   );
 
-  const selectedPressure =
-    selectedEvaluation?.budget_pressure ??
-    (selectedCategory.budget_limit > 0
-      ? selectedActualSpend / selectedCategory.budget_limit
-      : 0);
+  const selectedPressure = selectedCategoryBudgetStatus.budgetPressure;
 
   const selectedPressureTone = getBudgetTone(selectedPressure);
   const selectedPressureColor = getBudgetColor(selectedPressure);
@@ -203,9 +247,110 @@ export default function TransactionsScreen() {
     loadTransactions();
   }, []);
 
+  const syncBudgetEditor = (category: CategorySetting) => {
+    setSelectedBudgetCategoryId(category.id);
+    setEditBudgetLimit(getBudgetInputValue(category.budget_limit));
+    setEditAlertThreshold(String(category.alert_threshold));
+    setEditIsDailyChallenge(category.is_daily_challenge);
+  };
+
+  const handleSelectBudgetCategory = (category: CategorySetting) => {
+    syncBudgetEditor(category);
+  };
+
+  const loadCategories = async () => {
+    try {
+      setIsCategoryLoading(true);
+
+      const apiCategories = await getCategoriesFromApi();
+
+      setCategories(apiCategories);
+
+      if (apiCategories.length > 0) {
+        const currentSelected = selectedBudgetCategoryId
+          ? apiCategories.find(
+              (category) => category.id === selectedBudgetCategoryId
+            )
+          : null;
+
+        const nextCategory = currentSelected ?? apiCategories[0];
+
+        setSelectedCategoryIndex(0);
+        setCategory(apiCategories[0].category_name);
+        syncBudgetEditor(nextCategory);
+      }
+    } catch {
+      showToast('카테고리 정보를 불러오지 못했어요.');
+    } finally {
+      setIsCategoryLoading(false);
+    }
+  };
+
+  const handleSaveBudgetCategory = async () => {
+    if (!selectedBudgetCategory) {
+      showToast('수정할 항목을 선택해 주세요.');
+      return;
+    }
+
+    const parsedBudgetLimit = parseAmountInput(editBudgetLimit);
+    const parsedAlertThreshold = Number(editAlertThreshold);
+
+    if (!Number.isInteger(parsedBudgetLimit) || parsedBudgetLimit < 0) {
+      showToast('월 예산을 숫자로 입력해 주세요.');
+      return;
+    }
+
+    if (
+      !Number.isInteger(parsedAlertThreshold) ||
+      parsedAlertThreshold < 1 ||
+      parsedAlertThreshold > 100
+    ) {
+      showToast('알림 기준은 1부터 100 사이로 입력해 주세요.');
+      return;
+    }
+
+    try {
+      setIsCategorySaving(true);
+
+      const updatedCategory = await updateCategoryFromApi(
+        selectedBudgetCategory.id,
+        {
+          budget_limit: parsedBudgetLimit,
+          alert_threshold: parsedAlertThreshold,
+          is_daily_challenge: editIsDailyChallenge,
+        }
+      );
+
+      setCategories((prev) =>
+        prev.map((category) =>
+          category.id === updatedCategory.id ? updatedCategory : category
+        )
+      );
+
+      syncBudgetEditor(updatedCategory);
+
+      showToast('예산 설정을 저장했어요.');
+    } catch {
+      showToast('예산 설정을 저장하지 못했어요.');
+    } finally {
+      setIsCategorySaving(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
   const handleSelectCategory = (index: number) => {
+    const nextCategory = categories[index];
+
+    if (!nextCategory) {
+      return;
+    }
+
     setSelectedCategoryIndex(index);
-    setCategory(categories[index].category_name);
+    setCategory(nextCategory.category_name);
+    syncBudgetEditor(nextCategory);
   };
 
   const openAddModal = () => {
@@ -338,27 +483,6 @@ export default function TransactionsScreen() {
 
     setTransactions((prev) => [...nextImported, ...prev]);
     showToast(`${nextImported.length}건의 지출 내역을 불러왔어요.`);
-  };
-
-  const toggleDailyMission = (categoryId: string) => {
-    const wasIncluded = selectedCategory.is_daily_challenge;
-
-    setCategories((prev) =>
-      prev.map((item) =>
-        item.id === categoryId
-          ? {
-              ...item,
-              is_daily_challenge: !item.is_daily_challenge,
-            }
-          : item
-      )
-    );
-
-    showToast(
-      wasIncluded
-        ? `${selectedCategory.category_name} 항목을 미션에서 제외했어요.`
-        : `${selectedCategory.category_name} 항목을 미션에 포함했어요.`
-    );
   };
 
   const renderTransactionCard = (transaction: Transaction, delay: number) => {
@@ -595,15 +719,15 @@ export default function TransactionsScreen() {
             <View style={styles.categoryMetricItem}>
               <Text style={styles.metricLabel}>기록된 지출</Text>
               <Text style={styles.metricValue}>
-                {formatWon(selectedActualSpend)}
+                {formatWon(selectedCategoryBudgetStatus.actualSpend)}
               </Text>
             </View>
 
             <View style={styles.categoryMetricItem}>
               <Text style={styles.metricLabel}>월말 예상</Text>
               <Text style={styles.metricValue}>
-                {selectedEvaluation
-                  ? formatWon(selectedEvaluation.predicted_monthly_spend)
+                {selectedCategoryBudgetStatus.predictedMonthlySpend > 0
+                  ? formatWon(selectedCategoryBudgetStatus.predictedMonthlySpend)
                   : '기록 부족'}
               </Text>
             </View>
@@ -631,30 +755,87 @@ export default function TransactionsScreen() {
           <Text style={styles.categoryStatusText}>
             {getFriendlyBudgetMessage(selectedPressure)}
           </Text>
+        </GlassCard>
 
-          <View style={styles.challengeSwitchBox}>
-            <View style={styles.switchTextBox}>
-              <Text style={styles.switchTitle}>오늘의 미션에 포함</Text>
-              <Text style={styles.switchDescription}>
-                줄이고 싶은 항목이라면 켜두세요.
+        {selectedBudgetCategory ? (
+          <GlassCard delay={470} tone="butter" style={styles.budgetEditorCard}>
+            <View style={styles.budgetEditorHeader}>
+              <View>
+                <Text style={styles.cardLabel}>예산 설정</Text>
+                <Text style={styles.budgetEditorTitle}>
+                  {selectedBudgetCategory.category_name}
+                </Text>
+              </View>
+
+              <Text style={styles.budgetEditorBadge}>
+                {selectedBudgetCategory.is_daily_challenge
+                  ? '미션 포함'
+                  : '미션 제외'}
               </Text>
             </View>
 
-            <Switch
-              value={selectedCategory.is_daily_challenge}
-              onValueChange={() => toggleDailyMission(selectedCategory.id)}
-              thumbColor={
-                selectedCategory.is_daily_challenge
-                  ? colors.butterStrong
-                  : '#F4F4F4'
-              }
-              trackColor={{
-                true: colors.butterSoft,
-                false: colors.gray200,
-              }}
+            <Text style={styles.budgetEditLabel}>월 예산</Text>
+            <TextInput
+              style={styles.budgetEditInput}
+              value={editBudgetLimit}
+              onChangeText={setEditBudgetLimit}
+              keyboardType="number-pad"
+              placeholder="예: 30000"
+              placeholderTextColor={colors.mutedText}
             />
-          </View>
-        </GlassCard>
+
+            <Text style={styles.budgetEditHint}>
+              현재 설정: {formatWon(selectedBudgetCategory.budget_limit)}
+            </Text>
+
+            <Text style={styles.budgetEditLabel}>알림 기준</Text>
+            <View style={styles.thresholdRow}>
+              <TextInput
+                style={[styles.budgetEditInput, styles.thresholdInput]}
+                value={editAlertThreshold}
+                onChangeText={setEditAlertThreshold}
+                keyboardType="number-pad"
+                placeholder="80"
+                placeholderTextColor={colors.mutedText}
+              />
+              <Text style={styles.thresholdSuffix}>%</Text>
+            </View>
+
+            <View style={styles.budgetSwitchRow}>
+              <View style={styles.budgetSwitchTextBox}>
+                <Text style={styles.budgetSwitchTitle}>
+                  오늘의 미션 후보에 포함
+                </Text>
+                <Text style={styles.budgetSwitchDescription}>
+                  켜두면 이 항목도 소비 미션 생성에 사용할 수 있습니다.
+                </Text>
+              </View>
+
+              <Switch
+                value={editIsDailyChallenge}
+                onValueChange={setEditIsDailyChallenge}
+                trackColor={{
+                  false: 'rgba(122,111,91,0.18)',
+                  true: colors.butterSoft,
+                }}
+                thumbColor={colors.backgroundWhite}
+              />
+            </View>
+
+            <Pressable
+              style={[
+                styles.budgetSaveButton,
+                isCategorySaving && styles.disabledBudgetSaveButton,
+              ]}
+              onPress={handleSaveBudgetCategory}
+              disabled={isCategorySaving}
+            >
+              <Text style={styles.budgetSaveButtonText}>
+                {isCategorySaving ? '저장 중...' : '예산 설정 저장'}
+              </Text>
+            </Pressable>
+          </GlassCard>
+        ) : null}
       </ScrollView>
 
       <Modal
@@ -1103,6 +1284,122 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: colors.subText,
   },
+  budgetEditorCard: {
+  marginTop: 14,
+  backgroundColor: 'rgba(255,248,216,0.42)',
+},
+budgetEditorHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  gap: 14,
+  alignItems: 'center',
+  marginBottom: 16,
+},
+budgetEditorTitle: {
+  fontFamily: typography.fontFamily,
+  fontSize: 22,
+  fontWeight: '900',
+  color: colors.text,
+  letterSpacing: -0.5,
+},
+budgetEditorBadge: {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 999,
+  overflow: 'hidden',
+  backgroundColor: colors.butterPale,
+  fontFamily: typography.fontFamily,
+  fontSize: 12,
+  fontWeight: '900',
+  color: colors.butterBrown,
+},
+budgetEditLabel: {
+  fontFamily: typography.fontFamily,
+  fontSize: 13,
+  fontWeight: '900',
+  color: colors.subText,
+  marginBottom: 7,
+},
+budgetEditInput: {
+  minHeight: 52,
+  borderRadius: 18,
+  paddingHorizontal: 14,
+  backgroundColor: 'rgba(255,255,255,0.28)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.38)',
+  fontFamily: typography.fontFamily,
+  fontSize: 15,
+  fontWeight: '800',
+  color: colors.text,
+  marginBottom: 8,
+},
+budgetEditHint: {
+  fontFamily: typography.fontFamily,
+  fontSize: 12.5,
+  color: colors.mutedText,
+  marginBottom: 14,
+},
+thresholdRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  marginBottom: 14,
+},
+thresholdInput: {
+  flex: 1,
+  marginBottom: 0,
+},
+thresholdSuffix: {
+  fontFamily: typography.fontFamily,
+  fontSize: 16,
+  fontWeight: '900',
+  color: colors.text,
+},
+budgetSwitchRow: {
+  minHeight: 68,
+  borderRadius: 21,
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  backgroundColor: 'rgba(255,255,255,0.26)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.34)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 14,
+  marginBottom: 16,
+},
+budgetSwitchTextBox: {
+  flex: 1,
+},
+budgetSwitchTitle: {
+  fontFamily: typography.fontFamily,
+  fontSize: 14,
+  fontWeight: '900',
+  color: colors.text,
+  marginBottom: 4,
+},
+budgetSwitchDescription: {
+  fontFamily: typography.fontFamily,
+  fontSize: 12.5,
+  lineHeight: 18,
+  color: colors.subText,
+},
+budgetSaveButton: {
+  height: 52,
+  borderRadius: 19,
+  backgroundColor: colors.butterStrong,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+disabledBudgetSaveButton: {
+  opacity: 0.62,
+},
+budgetSaveButtonText: {
+  fontFamily: typography.fontFamily,
+  fontSize: 15,
+  fontWeight: '900',
+  color: colors.text,
+},
   challengeSwitchBox: {
     marginTop: 14,
     paddingTop: 14,

@@ -5,6 +5,9 @@ export type ApiStatusResponse = {
 export type SignupRequest = {
   email: string;
   password: string;
+  income_type: string;
+  payday: number;
+  spend_profile: string;
 };
 
 export type SignupResponse = {
@@ -157,4 +160,30 @@ export type UpdateMeRequest = {
 export type UpdateMeResponse = {
   status: 'success' | string;
   data: MeResponse;
+};
+
+export type ApiCategorySetting = {
+  id: string;
+  user_id: string;
+  category_name: string;
+  budget_limit: number;
+  is_daily_challenge: boolean;
+  alert_threshold: number;
+};
+
+export type CategoriesResponse = {
+  status: 'success' | string;
+  count: number;
+  data: ApiCategorySetting[];
+};
+
+export type UpdateCategoryRequest = {
+  budget_limit?: number;
+  is_daily_challenge?: boolean;
+  alert_threshold?: number;
+};
+
+export type UpdateCategoryResponse = {
+  status: 'success' | string;
+  data: ApiCategorySetting;
 };
