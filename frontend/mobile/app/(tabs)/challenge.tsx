@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  getTodayChallengeFromApi,
+} from '@/services/challengeService';
 import {
   Modal,
   Pressable,
@@ -41,7 +44,10 @@ import {
 import { getCategoryMeta } from '@/utils/categoryMeta';
 
 export default function ChallengeScreen() {
-  const mission = mockTodayChallenge;
+  const [mission, setMission] = useState(mockTodayChallenge);
+  const [isChallengeLoading, setIsChallengeLoading] = useState(false);
+  const hasLoadedChallengeRef = useRef(false);
+
   const metadata = mission.ai_metadata;
 
   const missionMeta = getCategoryMeta(mission.category_name);
@@ -62,6 +68,33 @@ export default function ChallengeScreen() {
   const pressureColor = getBudgetColor(metadata.budget_pressure);
   const pressureBg = getBudgetBg(metadata.budget_pressure);
   const pressureLabel = getBudgetLabel(metadata.budget_pressure);
+
+  const loadTodayChallenge = async () => {
+    if (isChallengeLoading) {
+      return;
+    }
+
+    try {
+      setIsChallengeLoading(true);
+
+      const apiMission = await getTodayChallengeFromApi();
+
+      setMission(apiMission);
+    } catch {
+      showToast('오늘의 미션을 불러오지 못했어요.');
+    } finally {
+      setIsChallengeLoading(false);
+    }
+  };
+
+useEffect(() => {
+  if (hasLoadedChallengeRef.current) {
+    return;
+  }
+
+  hasLoadedChallengeRef.current = true;
+  loadTodayChallenge();
+}, []);
 
   const handleCompleteMission = () => {
     if (isTodayMissionCompleted) {
@@ -162,6 +195,12 @@ export default function ChallengeScreen() {
               </Text>
             </View>
           </Pressable>
+          <AnimatedButton
+  title={isChallengeLoading ? '미션 불러오는 중...' : '오늘 미션 다시 불러오기'}
+  variant="ghost"
+  onPress={loadTodayChallenge}
+  style={styles.reloadButton}
+/>
         </GlassCard>
 
         <GlassCard delay={160} style={styles.statusCard}>
@@ -388,6 +427,9 @@ const styles = StyleSheet.create({
   completedRow: {
     borderColor: 'rgba(82,123,50,0.22)',
   },
+  reloadButton: {
+  marginTop: 14,
+},
   checkBox: {
     width: 34,
     height: 34,

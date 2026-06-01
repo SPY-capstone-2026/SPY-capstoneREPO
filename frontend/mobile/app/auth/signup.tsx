@@ -309,11 +309,6 @@ export default function SignupScreen() {
               })}
             </View>
 
-            <Text style={styles.apiNotice}>
-              현재 서버에는 이메일과 비밀번호만 먼저 저장됩니다. 수입 유형과
-              소비 성향은 이후 프로필 API와 연결할 예정입니다.
-            </Text>
-
             <AnimatedButton
               title={isLoading ? '가입 중...' : 'Moni 시작하기'}
               onPress={handleSignup}

@@ -1,5 +1,7 @@
 import sys
 import os
+
+from requests import session
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai'))
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -8,10 +10,13 @@ from sqlmodel import Session, select
 from models import create_db_and_tables, engine, User, DailyChallenge, Transaction, UserCategorySetting
 from auth import hash_password, verify_password, create_access_token, get_current_user_id
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime, time
 import pandas as pd
+from typing import Optional
 from moni_engine.engine import get_today_challenges
 from fastapi.middleware.cors import CORSMiddleware
+from calendar import monthrange
+from collections import defaultdict
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +37,211 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def ensure_default_category_settings(session: Session, user_id: str):
+    existing = session.exec(
+        select(UserCategorySetting).where(UserCategorySetting.user_id == user_id)
+    ).all()
+
+    if existing:
+        return existing
+
+    defaults = [
+        {
+            "category_name": "카페",
+            "budget_limit": 30000,
+            "is_daily_challenge": True,
+            "alert_threshold": 80,
+        },
+        {
+            "category_name": "식비",
+            "budget_limit": 180000,
+            "is_daily_challenge": True,
+            "alert_threshold": 80,
+        },
+        {
+            "category_name": "쇼핑",
+            "budget_limit": 90000,
+            "is_daily_challenge": True,
+            "alert_threshold": 85,
+        },
+        {
+            "category_name": "교통",
+            "budget_limit": 60000,
+            "is_daily_challenge": False,
+            "alert_threshold": 90,
+        },
+    ]
+
+    created = []
+
+    for item in defaults:
+        setting = UserCategorySetting(
+            user_id=user_id,
+            category_name=item["category_name"],
+            budget_limit=item["budget_limit"],
+            is_daily_challenge=item["is_daily_challenge"],
+            alert_threshold=item["alert_threshold"],
+        )
+        session.add(setting)
+        created.append(setting)
+
+    session.commit()
+
+    for setting in created:
+        session.refresh(setting)
+
+    return created
+
+
+def serialize_challenge(challenge: DailyChallenge):
+    return {
+        "challenge_id": challenge.challenge_id,
+        "user_id": challenge.user_id,
+        "category_name": challenge.category_name,
+        "challenge_date": challenge.challenge_date.isoformat(),
+        "challenge_type": challenge.challenge_type,
+        "challenge_text": challenge.challenge_text,
+        "difficulty": challenge.difficulty,
+        "status": challenge.status,
+        "xp_reward": challenge.xp_reward,
+        "ai_metadata": challenge.ai_metadata,
+    }
+
+def make_fallback_challenge(user_id: str, target_date: date):
+    return {
+        "user_id": user_id,
+        "category_name": "카페",
+        "challenge_date": target_date,
+        "challenge_type": "제한형",
+        "challenge_text": "오늘은 카페 지출을 한 번만 줄여보세요.",
+        "difficulty": "Easy",
+        "status": "PENDING",
+        "xp_reward": 10,
+        "ai_metadata": {
+            "model_version": "fallback-v1",
+            "generated_at": datetime.now().isoformat(),
+            "budget_limit": 30000,
+            "month_to_date_actual": 0,
+            "predicted_remaining_spend": 0,
+            "predicted_monthly_spend": 0,
+            "budget_pressure": 1,
+            "evaluated_categories": [
+                {
+                    "category_name": "카페",
+                    "budget_pressure": 1,
+                    "budget_limit": 30000,
+                    "predicted_monthly_spend": 0,
+                    "rank": 1,
+                }
+            ],
+        },
+    }
+
+def serialize_category_setting(setting: UserCategorySetting):
+    return {
+        "id": setting.id,
+        "user_id": setting.user_id,
+        "category_name": setting.category_name,
+        "budget_limit": setting.budget_limit,
+        "is_daily_challenge": setting.is_daily_challenge,
+        "alert_threshold": setting.alert_threshold,
+    }
+
+def serialize_transaction(transaction: Transaction):
+    return {
+        "tx_id": transaction.tx_id,
+        "user_id": transaction.user_id,
+        "tx_date": transaction.tx_date.isoformat(),
+        "tx_time": transaction.tx_time.strftime("%H:%M")
+        if transaction.tx_time
+        else None,
+        "amount": transaction.amount,
+        "merchant_name": transaction.merchant_name,
+        "mydata_category": transaction.mydata_category,
+        "final_category": transaction.final_category,
+        "is_user_corrected": transaction.is_user_corrected,
+    }
+
+def get_month_date_range(target_date: date):
+    first_day = target_date.replace(day=1)
+    last_day = target_date.replace(
+        day=monthrange(target_date.year, target_date.month)[1]
+    )
+
+    return first_day, last_day
+
+
+def get_weekly_trend(transactions):
+    labels = ["월", "화", "수", "목", "금", "토", "일"]
+    amount_by_weekday = defaultdict(int)
+
+    for transaction in transactions:
+        amount_by_weekday[transaction.tx_date.weekday()] += transaction.amount
+
+    return [
+        {
+            "label": labels[index],
+            "amount": amount_by_weekday[index],
+        }
+        for index in range(7)
+    ]
+
+
+def calculate_projected_amount(actual_amount: int, today: date):
+    days_in_month = monthrange(today.year, today.month)[1]
+
+    if today.day <= 0:
+        return actual_amount
+
+    if actual_amount <= 0:
+        return 0
+
+    return round((actual_amount / today.day) * days_in_month)
+
+
+def build_evaluated_categories(category_settings, monthly_transactions, today: date):
+    actual_by_category = defaultdict(int)
+
+    for transaction in monthly_transactions:
+        actual_by_category[transaction.final_category] += transaction.amount
+
+    evaluated = []
+
+    for setting in category_settings:
+        actual_spend = actual_by_category[setting.category_name]
+        predicted_monthly_spend = calculate_projected_amount(actual_spend, today)
+
+        if setting.budget_limit > 0:
+            budget_pressure = predicted_monthly_spend / setting.budget_limit
+        else:
+            budget_pressure = 0
+
+        evaluated.append(
+            {
+                "category_name": setting.category_name,
+                "budget_limit": setting.budget_limit,
+                "actual_spend": actual_spend,
+                "predicted_monthly_spend": predicted_monthly_spend,
+                "budget_pressure": budget_pressure,
+                "rank": None,
+            }
+        )
+
+    evaluated.sort(
+        key=lambda item: item["budget_pressure"],
+        reverse=True,
+    )
+
+    for index, item in enumerate(evaluated, start=1):
+        item["rank"] = index
+
+    return evaluated
+
+class CategoryUpdateRequest(BaseModel):
+    budget_limit: Optional[int] = None
+    is_daily_challenge: Optional[bool] = None
+    alert_threshold: Optional[int] = None
+
 class SignupRequest(BaseModel):
     email: str
     password: str
@@ -39,6 +249,25 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+class TransactionCreateRequest(BaseModel):
+    tx_date: date
+    tx_time: Optional[time] = None
+    amount: int
+    merchant_name: str
+    mydata_category: str = "직접 입력"
+    final_category: str
+    is_user_corrected: bool = True
+
+
+class TransactionUpdateRequest(BaseModel):
+    tx_date: Optional[date] = None
+    tx_time: Optional[time] = None
+    amount: Optional[int] = None
+    merchant_name: Optional[str] = None
+    mydata_category: Optional[str] = None
+    final_category: Optional[str] = None
+    is_user_corrected: Optional[bool] = None
 
 @app.get("/")
 def read_root():
@@ -58,6 +287,7 @@ def signup(req: SignupRequest):
         session.add(user)
         session.commit()
         session.refresh(user)
+        ensure_default_category_settings(session, user.user_id)
         return {"status": "success", "user_id": user.user_id}
 
 # [API 2] 로그인
@@ -80,53 +310,336 @@ def get_me(user_id: str = Depends(get_current_user_id)):
         return {"user_id": user.user_id, "email": user.email}
 
 # [API 4] 오늘의 챌린지 생성
-@app.post("/challenges/generate")
-def generate_challenges(user_id: str = Depends(get_current_user_id)):
+@app.get("/challenges/today")
+def get_today_challenges_api(user_id: str = Depends(get_current_user_id)):
     with Session(engine) as session:
-        # 유저 정보 조회
         user = session.get(User, user_id)
+
         if not user:
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
-        # 트랜잭션 조회
+        today = date.today()
+
+        challenges = session.exec(
+            select(DailyChallenge)
+            .where(DailyChallenge.user_id == user_id)
+            .where(DailyChallenge.challenge_date == today)
+        ).all()
+
+        return {
+            "status": "success",
+            "count": len(challenges),
+            "data": [
+                serialize_challenge(challenge)
+                for challenge in challenges
+            ],
+        }
+
+@app.post("/challenges/generate")
+def generate_challenges(user_id: str = Depends(get_current_user_id)):
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+        today = date.today()
+
+        existing_challenges = session.exec(
+            select(DailyChallenge)
+            .where(DailyChallenge.user_id == user_id)
+            .where(DailyChallenge.challenge_date == today)
+        ).all()
+
+        if existing_challenges:
+            return {
+                "status": "success",
+                "count": len(existing_challenges),
+                "data": [
+                    serialize_challenge(challenge)
+                    for challenge in existing_challenges
+                ],
+            }
+
         transactions = session.exec(
             select(Transaction).where(Transaction.user_id == user_id)
         ).all()
 
-        # 카테고리 설정 조회
-        category_settings = session.exec(
-            select(UserCategorySetting).where(UserCategorySetting.user_id == user_id)
-        ).all()
+        category_settings = ensure_default_category_settings(session, user_id)
 
-        if not category_settings:
-            raise HTTPException(status_code=400, detail="카테고리 설정이 없습니다")
-
-        # DataFrame 변환
         transactions_df = pd.DataFrame([t.model_dump() for t in transactions])
-        category_settings_df = pd.DataFrame([c.model_dump() for c in category_settings])
+        category_settings_df = pd.DataFrame(
+            [c.model_dump() for c in category_settings]
+        )
 
-        # Prophet 엔진 실행
         user_profile = user.model_dump()
+
         challenges = get_today_challenges(
             transactions_df=transactions_df,
             user_profile=user_profile,
             category_settings_df=category_settings_df,
-            target_date=date.today(),
+            target_date=today,
         )
 
         if not challenges:
-            return {"status": "success", "count": 0, "data": []}
+            challenges = [make_fallback_challenge(user_id, today)]
 
-        # DB에 저장
         saved = []
+
         for c in challenges:
-            if isinstance(c.get('challenge_date'), str):
-                c['challenge_date'] = date.fromisoformat(c['challenge_date'])
+            if isinstance(c.get("challenge_date"), str):
+                c["challenge_date"] = date.fromisoformat(c["challenge_date"])
+
             challenge = DailyChallenge(**c)
             session.add(challenge)
-            session.commit()
-            session.refresh(challenge)
             saved.append(challenge)
 
-        return {"status": "success", "count": len(saved), "data": saved}
+        session.commit()
+
+        for challenge in saved:
+            session.refresh(challenge)
+
+        return {
+            "status": "success",
+            "count": len(saved),
+            "data": [
+                serialize_challenge(challenge)
+                for challenge in saved
+            ],
+        }
     
+    @app.get("/categories")
+    def get_categories_api(user_id: str = Depends(get_current_user_id)):
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+
+            if not user:
+                raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+            categories = ensure_default_category_settings(session, user_id)
+
+            return {
+                "status": "success",
+                "count": len(categories),
+                "data": [
+                    serialize_category_setting(category)
+                    for category in categories
+                ],
+            }
+    
+    @app.patch("/categories/{category_id}")
+    def update_category_api(
+        category_id: str,
+        req: CategoryUpdateRequest,
+        user_id: str = Depends(get_current_user_id),
+    ):
+        with Session(engine) as session:
+            category = session.get(UserCategorySetting, category_id)
+
+            if not category:
+                raise HTTPException(status_code=404, detail="카테고리를 찾을 수 없습니다")
+
+            if category.user_id != user_id:
+                raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
+
+            if req.budget_limit is not None:
+                category.budget_limit = req.budget_limit
+
+            if req.is_daily_challenge is not None:
+                category.is_daily_challenge = req.is_daily_challenge
+
+            if req.alert_threshold is not None:
+                category.alert_threshold = req.alert_threshold
+
+            session.add(category)
+            session.commit()
+            session.refresh(category)
+
+            return {
+                "status": "success",
+                "data": serialize_category_setting(category),
+            }
+        
+@app.get("/transactions")
+def get_transactions_api(user_id: str = Depends(get_current_user_id)):
+    with Session(engine) as session:
+        transactions = session.exec(
+            select(Transaction).where(Transaction.user_id == user_id)
+        ).all()
+
+        sorted_transactions = sorted(
+            transactions,
+            key=lambda item: (item.tx_date, item.tx_time),
+            reverse=True,
+        )
+
+        return {
+            "status": "success",
+            "count": len(sorted_transactions),
+            "data": [
+                serialize_transaction(transaction)
+                for transaction in sorted_transactions
+            ],
+        }
+
+
+@app.post("/transactions")
+def create_transaction_api(
+    req: TransactionCreateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+        transaction = Transaction(
+            user_id=user_id,
+            tx_date=req.tx_date,
+            tx_time=req.tx_time or datetime.now().time().replace(microsecond=0),
+            amount=req.amount,
+            merchant_name=req.merchant_name,
+            mydata_category=req.mydata_category,
+            final_category=req.final_category,
+            is_user_corrected=req.is_user_corrected,
+        )
+
+        session.add(transaction)
+        session.commit()
+        session.refresh(transaction)
+
+        return {
+            "status": "success",
+            "data": serialize_transaction(transaction),
+        }
+
+
+@app.patch("/transactions/{tx_id}")
+def update_transaction_api(
+    tx_id: str,
+    req: TransactionUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    with Session(engine) as session:
+        transaction = session.get(Transaction, tx_id)
+
+        if not transaction:
+            raise HTTPException(status_code=404, detail="지출 내역을 찾을 수 없습니다")
+
+        if transaction.user_id != user_id:
+            raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
+
+        if req.tx_date is not None:
+            transaction.tx_date = req.tx_date
+
+        if req.tx_time is not None:
+            transaction.tx_time = req.tx_time
+
+        if req.amount is not None:
+            transaction.amount = req.amount
+
+        if req.merchant_name is not None:
+            transaction.merchant_name = req.merchant_name
+
+        if req.mydata_category is not None:
+            transaction.mydata_category = req.mydata_category
+
+        if req.final_category is not None:
+            transaction.final_category = req.final_category
+
+        if req.is_user_corrected is not None:
+            transaction.is_user_corrected = req.is_user_corrected
+
+        session.add(transaction)
+        session.commit()
+        session.refresh(transaction)
+
+        return {
+            "status": "success",
+            "data": serialize_transaction(transaction),
+        }
+
+
+@app.delete("/transactions/{tx_id}")
+def delete_transaction_api(
+    tx_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    with Session(engine) as session:
+        transaction = session.get(Transaction, tx_id)
+
+        if not transaction:
+            raise HTTPException(status_code=404, detail="지출 내역을 찾을 수 없습니다")
+
+        if transaction.user_id != user_id:
+            raise HTTPException(status_code=403, detail="삭제 권한이 없습니다")
+
+        session.delete(transaction)
+        session.commit()
+
+        return {
+            "status": "success",
+            "deleted_id": tx_id,
+        }
+
+@app.get("/reports/monthly")
+def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
+
+        today = date.today()
+        first_day, last_day = get_month_date_range(today)
+
+        category_settings = ensure_default_category_settings(session, user_id)
+
+        monthly_transactions = session.exec(
+            select(Transaction)
+            .where(Transaction.user_id == user_id)
+            .where(Transaction.tx_date >= first_day)
+            .where(Transaction.tx_date <= last_day)
+        ).all()
+
+        total_spend = sum(
+            transaction.amount
+            for transaction in monthly_transactions
+        )
+
+        total_budget = sum(
+            category.budget_limit
+            for category in category_settings
+        )
+
+        predicted_monthly_spend = calculate_projected_amount(total_spend, today)
+
+        if total_budget > 0:
+            budget_pressure = predicted_monthly_spend / total_budget
+        else:
+            budget_pressure = 0
+
+        evaluated_categories = build_evaluated_categories(
+            category_settings=category_settings,
+            monthly_transactions=monthly_transactions,
+            today=today,
+        )
+
+        weekly_trend = get_weekly_trend(monthly_transactions)
+
+        return {
+            "status": "success",
+            "data": {
+                "month": today.strftime("%Y-%m"),
+                "monthly_summary": {
+                    "total_spend": total_spend,
+                    "budget_limit": total_budget,
+                    "predicted_monthly_spend": predicted_monthly_spend,
+                    "budget_pressure": budget_pressure,
+                    "transaction_count": len(monthly_transactions),
+                },
+                "weekly_trend": weekly_trend,
+                "evaluated_categories": evaluated_categories,
+            },
+        }

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -47,6 +47,12 @@ import {
   getBudgetTone,
   getFriendlyBudgetMessage,
 } from '@/utils/budgetStatus';
+import {
+  createTransactionFromApi,
+  deleteTransactionFromApi,
+  getTransactionsFromApi,
+  updateTransactionFromApi,
+} from '@/services/transactionService';
 import { getCategoryMeta } from '@/utils/categoryMeta';
 
 const importedTransactions: Transaction[] = [
@@ -96,8 +102,9 @@ export default function TransactionsScreen() {
     mission.ai_metadata.evaluated_categories
   );
 
-  const [transactions, setTransactions] =
-    useState<Transaction[]>(mockTransactions);
+  const [isTransactionLoading, setIsTransactionLoading] = useState(false);
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [categories, setCategories] =
     useState<CategorySetting[]>(mockCategorySettings);
@@ -159,6 +166,24 @@ export default function TransactionsScreen() {
   const selectedPressureBg = getBudgetBg(selectedPressure);
   const selectedPressureLabel = getBudgetLabel(selectedPressure);
 
+  const loadTransactions = async () => {
+    try {
+      setIsTransactionLoading(true);
+
+      const apiTransactions = await getTransactionsFromApi();
+      setTransactions(apiTransactions);
+    } catch {
+      setTransactions([]);
+      showToast('지출 내역을 불러오지 못했어요.');
+    } finally {
+      setIsTransactionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTransactions();
+  }, []);
+
   const handleSelectCategory = (index: number) => {
     setSelectedCategoryIndex(index);
     setCategory(categories[index].category_name);
@@ -192,7 +217,7 @@ export default function TransactionsScreen() {
     setAmountInput(formatAmountInput(value));
   };
 
-  const handleSaveTransaction = () => {
+  const handleSaveTransaction = async () => {
     if (!merchant.trim()) {
       showToast('결제처를 입력해 주세요.');
       return;
@@ -210,71 +235,75 @@ export default function TransactionsScreen() {
       return;
     }
 
-    if (editingTransactionId) {
-      setTransactions((prev) =>
-        prev.map((item) =>
-          item.tx_id === editingTransactionId
-            ? {
-                ...item,
-                merchant_name: merchant.trim(),
-                amount: numericAmount,
-                final_category: category,
-                is_user_corrected: true,
-              }
-            : item
-        )
+    try {
+      if (editingTransactionId) {
+        const updatedTransaction = await updateTransactionFromApi(
+          editingTransactionId,
+          {
+            merchant_name: merchant.trim(),
+            amount: numericAmount,
+            final_category: category,
+            is_user_corrected: true,
+          }
+        );
+
+        setTransactions((prev) =>
+          prev.map((item) =>
+            item.tx_id === editingTransactionId ? updatedTransaction : item
+          )
+        );
+
+        showToast('지출 내역이 수정됐어요.');
+      } else {
+        const newTransaction = await createTransactionFromApi({
+          tx_date: mission.challenge_date,
+          tx_time: '12:00',
+          amount: numericAmount,
+          merchant_name: merchant.trim(),
+          mydata_category: '직접 입력',
+          final_category: category,
+          is_user_corrected: true,
+        });
+
+        setTransactions((prev) => [newTransaction, ...prev]);
+        showToast(`${category}에 ${formatWon(numericAmount)} 지출이 추가됐어요.`);
+      }
+
+      const nextIndex = categories.findIndex(
+        (item) => item.category_name === category
       );
 
-      showToast('지출 내역이 수정됐어요.');
-    } else {
-      const newTransaction: Transaction = {
-        tx_id: `manual-${Date.now()}`,
-        user_id: selectedCategory.user_id,
-        tx_date: mission.challenge_date,
-        tx_time: '오늘',
-        amount: numericAmount,
-        merchant_name: merchant.trim(),
-        mydata_category: '직접 입력',
-        final_category: category,
-        is_user_corrected: true,
-      };
+      if (nextIndex >= 0) {
+        setSelectedCategoryIndex(nextIndex);
+      }
 
-      setTransactions((prev) => [newTransaction, ...prev]);
-      showToast(`${category}에 ${formatWon(numericAmount)} 지출이 추가됐어요.`);
+      closeModal();
+    } catch {
+      showToast('지출 내역을 저장하지 못했어요.');
     }
-
-    const nextIndex = categories.findIndex(
-      (item) => item.category_name === category
-    );
-
-    if (nextIndex >= 0) {
-      setSelectedCategoryIndex(nextIndex);
-    }
-
-    closeModal();
   };
 
-  const handleDeleteTransaction = (transaction: Transaction) => {
-    Alert.alert(
-      '지출 삭제',
-      `${transaction.merchant_name} 지출을 삭제할까요?`,
-      [
-        {
-          text: '취소',
-          style: 'cancel',
-        },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: () => {
-            setTransactions((prev) =>
-              prev.filter((item) => item.tx_id !== transaction.tx_id)
-            );
-            showToast('지출 내역을 삭제했어요.');
-          },
-        },
-      ]
-    );
+  const handleDeleteTransaction = async (transaction: Transaction) => {
+    const shouldDelete =
+      Platform.OS === 'web'
+        ? window.confirm(`${transaction.merchant_name} 지출을 삭제할까요?`)
+        : true;
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      await deleteTransactionFromApi(transaction.tx_id);
+
+      setTransactions((prev) =>
+        prev.filter((item) => item.tx_id !== transaction.tx_id)
+      );
+
+      showToast('지출 내역을 삭제했어요.');
+    } catch {
+      showToast('지출 내역을 삭제하지 못했어요.');
+    }
   };
 
   const handleImportTransactions = () => {
@@ -422,7 +451,9 @@ export default function TransactionsScreen() {
                 <Text style={styles.actionDescription}>방금 쓴 돈 기록</Text>
               </View>
             </Pressable>
+          </View>
 
+            {/*}
             <Pressable
               style={styles.secondaryActionButton}
               onPress={handleImportTransactions}
@@ -440,7 +471,7 @@ export default function TransactionsScreen() {
                 <Text style={styles.actionDescription}>카드 지출 가져오기</Text>
               </View>
             </Pressable>
-          </View>
+            */}
 
           <View style={styles.summaryLine}>
             <View style={styles.summaryItem}>
