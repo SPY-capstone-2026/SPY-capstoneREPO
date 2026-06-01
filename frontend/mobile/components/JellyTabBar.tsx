@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import {
@@ -52,24 +52,25 @@ const TAB_META: Record<string, TabMeta> = {
 
 const TAB_ORDER = ['home', 'challenge', 'report', 'transactions', 'mypage'];
 
+const BAR_SIDE_PADDING = 6;
+const JELLY_SIDE_GAP = 3;
+
 export function JellyTabBar({
   state,
   descriptors,
   navigation,
 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const [barWidth, setBarWidth] = useState(0);
+  const [innerWidth, setInnerWidth] = useState(0);
 
   const translateX = useRef(new Animated.Value(0)).current;
-  const jellyScaleX = useRef(new Animated.Value(1)).current;
-  const jellyScaleY = useRef(new Animated.Value(1)).current;
+  const scaleX = useRef(new Animated.Value(1)).current;
+  const scaleY = useRef(new Animated.Value(1)).current;
 
   const visibleRoutes = useMemo(() => {
     return [...state.routes]
       .filter((route) => TAB_META[route.name])
-      .sort(
-        (a, b) => TAB_ORDER.indexOf(a.name) - TAB_ORDER.indexOf(b.name)
-      );
+      .sort((a, b) => TAB_ORDER.indexOf(a.name) - TAB_ORDER.indexOf(b.name));
   }, [state.routes]);
 
   const selectedRoute = state.routes[state.index];
@@ -79,58 +80,69 @@ export function JellyTabBar({
     visibleRoutes.findIndex((route) => route.key === selectedRoute?.key)
   );
 
+  const usableWidth = Math.max(innerWidth - BAR_SIDE_PADDING * 2, 0);
+
   const tabWidth =
-    visibleRoutes.length > 0 && barWidth > 0
-      ? barWidth / visibleRoutes.length
+    visibleRoutes.length > 0 && usableWidth > 0
+      ? usableWidth / visibleRoutes.length
       : 0;
 
+  const jellyWidth = Math.max(tabWidth - JELLY_SIDE_GAP * 2, 0);
+
   useEffect(() => {
-    if (!tabWidth) return;
+    if (!tabWidth || !jellyWidth) return;
+
+    const targetX =
+      BAR_SIDE_PADDING +
+      selectedVisibleIndex * tabWidth +
+      (tabWidth - jellyWidth) / 2;
 
     Animated.parallel([
       Animated.spring(translateX, {
-        toValue: selectedVisibleIndex * tabWidth,
-        damping: 19,
-        stiffness: 210,
-        mass: 0.62,
+        toValue: targetX,
+        damping: 17,
+        stiffness: 360,
+        mass: 0.42,
         useNativeDriver: true,
       }),
+
       Animated.sequence([
         Animated.parallel([
-          Animated.spring(jellyScaleX, {
-            toValue: 1.14,
-            damping: 18,
-            stiffness: 260,
-            mass: 0.45,
+          Animated.spring(scaleX, {
+            toValue: 1.22,
+            damping: 11,
+            stiffness: 430,
+            mass: 0.34,
             useNativeDriver: true,
           }),
-          Animated.spring(jellyScaleY, {
-            toValue: 0.94,
-            damping: 18,
-            stiffness: 260,
-            mass: 0.45,
+          Animated.spring(scaleY, {
+            toValue: 0.90,
+            damping: 11,
+            stiffness: 430,
+            mass: 0.34,
             useNativeDriver: true,
           }),
         ]),
+
         Animated.parallel([
-          Animated.spring(jellyScaleX, {
+          Animated.spring(scaleX, {
             toValue: 1,
-            damping: 17,
-            stiffness: 230,
-            mass: 0.46,
+            damping: 20,
+            stiffness: 720,
+            mass: 0.24,
             useNativeDriver: true,
           }),
-          Animated.spring(jellyScaleY, {
+          Animated.spring(scaleY, {
             toValue: 1,
-            damping: 17,
-            stiffness: 230,
-            mass: 0.46,
+            damping: 20,
+            stiffness: 720,
+            mass: 0.24,
             useNativeDriver: true,
           }),
         ]),
       ]),
     ]).start();
-  }, [jellyScaleX, jellyScaleY, selectedVisibleIndex, tabWidth, translateX]);
+  }, [jellyWidth, scaleX, scaleY, selectedVisibleIndex, tabWidth, translateX]);
 
   return (
     <View
@@ -142,45 +154,46 @@ export function JellyTabBar({
         },
       ]}
     >
-      <BlurView
-        intensity={46}
-        tint="light"
-        style={styles.blurShell}
-        onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
-      >
-        <View style={styles.inner}>
+      <View style={styles.shell}>
+        <View
+          style={styles.inner}
+          onLayout={(event) => setInnerWidth(event.nativeEvent.layout.width)}
+        >
           {tabWidth > 0 ? (
             <Animated.View
               pointerEvents="none"
               style={[
                 styles.jelly,
                 {
-                  width: tabWidth - 10,
+                  width: jellyWidth,
                   transform: [
-                    {
-                      translateX,
-                    },
-                    {
-                      scaleX: jellyScaleX,
-                    },
-                    {
-                      scaleY: jellyScaleY,
-                    },
+                    { translateX },
+                    { scaleX },
+                    { scaleY },
                   ],
                 },
               ]}
             >
-              <View style={styles.jellyLight} />
-              <View style={styles.jellyGlow} />
+              <LinearGradient
+                colors={['#FFEFA6', '#F6D45A', '#E9BE32']}
+                start={{ x: 0.1, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.jellyFill}
+              >
+                <View style={styles.jellyLight} />
+                <View style={styles.jellyGlow} />
+              </LinearGradient>
             </Animated.View>
           ) : null}
 
           {visibleRoutes.map((route) => {
             const meta = TAB_META[route.name];
             const Icon = meta.Icon;
+
             const routeIndex = state.routes.findIndex(
               (item) => item.key === route.key
             );
+
             const isFocused = state.index === routeIndex;
             const descriptor = descriptors[route.key];
 
@@ -209,9 +222,7 @@ export function JellyTabBar({
                 key={route.key}
                 accessibilityRole="button"
                 accessibilityState={isFocused ? { selected: true } : {}}
-                accessibilityLabel={
-                  descriptor.options.tabBarAccessibilityLabel
-                }
+                accessibilityLabel={descriptor.options.tabBarAccessibilityLabel}
                 testID={descriptor.options.tabBarButtonTestID}
                 onPress={onPress}
                 onLongPress={onLongPress}
@@ -235,7 +246,7 @@ export function JellyTabBar({
             );
           })}
         </View>
-      </BlurView>
+      </View>
     </View>
   );
 }
@@ -249,12 +260,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
-  blurShell: {
+  shell: {
     borderRadius: 30,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.64)',
+    backgroundColor: 'rgba(255, 255, 255, 0.52)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255, 255, 255, 0.56)',
     shadowColor: colors.shadow,
     shadowOpacity: 0.13,
     shadowRadius: 22,
@@ -266,40 +277,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
-    paddingHorizontal: 5,
+    paddingHorizontal: BAR_SIDE_PADDING,
     paddingVertical: 6,
   },
   jelly: {
     position: 'absolute',
-    left: 5,
     top: 6,
     bottom: 6,
+    left: 0,
     borderRadius: 25,
-    backgroundColor: colors.butterStrong,
+    overflow: 'hidden',
     shadowColor: colors.shadow,
-    shadowOpacity: 0.14,
+    shadowOpacity: 0.16,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
+  },
+  jellyFill: {
+    flex: 1,
+    borderRadius: 25,
     overflow: 'hidden',
   },
   jellyLight: {
     position: 'absolute',
-    top: 9,
-    left: 14,
-    width: 36,
-    height: 13,
+    top: 8,
+    left: 13,
+    width: 34,
+    height: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.32)',
+    backgroundColor: 'rgba(255,255,255,0.34)',
   },
   jellyGlow: {
     position: 'absolute',
-    right: -14,
-    bottom: -18,
-    width: 54,
-    height: 54,
+    right: -12,
+    bottom: -16,
+    width: 52,
+    height: 52,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.13)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   tabButton: {
     flex: 1,

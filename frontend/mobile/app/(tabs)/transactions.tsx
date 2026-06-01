@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ArrowDownToLine,
   Edit3,
   PencilLine,
   Plus,
@@ -31,13 +30,10 @@ import { GlassCard } from '@/components/GlassCard';
 import { JellySegmentedControl } from '@/components/JellySegmentedControl';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import {
-  mockCategorySettings,
-  mockTodayChallenge,
-  mockTransactions,
-} from '@/constants/mockAiResult';
+import { mockCategorySettings } from '@/constants/mockAiResult';
+import type { CategorySetting, Transaction } from '@/constants/mockTypes';
 import { useToast } from '@/contexts/ToastContext';
-import { formatWon, sortEvaluatedCategories } from '@/utils/aiFormat';
+import { formatWon } from '@/utils/aiFormat';
 import {
   getBudgetBg,
   getBudgetColor,
@@ -46,33 +42,17 @@ import {
   getBudgetTone,
   getFriendlyBudgetMessage,
 } from '@/utils/budgetStatus';
+import {
+  createTransactionFromApi,
+  deleteTransactionFromApi,
+  getTransactionsFromApi,
+  updateTransactionFromApi,
+} from '@/services/transactionService';
 import { getCategoryMeta } from '@/utils/categoryMeta';
-import type { CategorySetting, Transaction } from '@/constants/mockTypes';
-
-const importedTransactions: Transaction[] = [
-  {
-    tx_id: 'tx-import-001',
-    user_id: 'user-demo-001',
-    tx_date: '2026-05-15',
-    tx_time: '09:40',
-    amount: 3500,
-    merchant_name: '컴포즈커피',
-    mydata_category: '식비',
-    final_category: '카페',
-    is_user_corrected: false,
-  },
-  {
-    tx_id: 'tx-import-002',
-    user_id: 'user-demo-001',
-    tx_date: '2026-05-15',
-    tx_time: '21:10',
-    amount: 6200,
-    merchant_name: 'GS25',
-    mydata_category: '편의점',
-    final_category: '식비',
-    is_user_corrected: false,
-  },
-];
+import {
+  getCategoriesFromApi,
+  updateCategoryFromApi,
+} from '@/services/categoryService';
 
 function formatAmountInput(value: string) {
   const onlyNumber = value.replace(/[^0-9]/g, '');
@@ -88,16 +68,66 @@ function parseAmountInput(value: string) {
   return Number(value.replace(/[^0-9]/g, ''));
 }
 
+function getBudgetInputValue(value: number) {
+  if (!value) {
+    return '';
+  }
+
+  return String(value);
+}
+
+function getTodayDateString() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTimeString() {
+  const now = new Date();
+
+  const hour = String(now.getHours()).padStart(2, '0');
+  const minute = String(now.getMinutes()).padStart(2, '0');
+
+  return `${hour}:${minute}`;
+}
+
+function isCurrentMonthDate(dateString: string) {
+  const now = new Date();
+  const [year, month] = dateString.split('-').map(Number);
+
+  return year === now.getFullYear() && month === now.getMonth() + 1;
+}
+
+function isValidDateString(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() + 1 === month &&
+    date.getDate() === day
+  );
+}
+
 export default function TransactionsScreen() {
-  const mission = mockTodayChallenge;
   const { showToast } = useToast();
 
-  const evaluatedCategories = sortEvaluatedCategories(
-    mission.ai_metadata.evaluated_categories
-  );
+  const [isTransactionLoading, setIsTransactionLoading] = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const [transactions, setTransactions] =
-    useState<Transaction[]>(mockTransactions);
   const [categories, setCategories] =
     useState<CategorySetting[]>(mockCategorySettings);
 
@@ -107,42 +137,84 @@ export default function TransactionsScreen() {
     null
   );
 
+  const [selectedBudgetCategoryId, setSelectedBudgetCategoryId] = useState<
+    string | null
+  >(null);
+  const [editBudgetLimit, setEditBudgetLimit] = useState('');
+  const [editAlertThreshold, setEditAlertThreshold] = useState('80');
+  const [editIsDailyChallenge, setEditIsDailyChallenge] = useState(false);
+  const [isCategorySaving, setIsCategorySaving] = useState(false);
+  const [isCategoryLoading, setIsCategoryLoading] = useState(false);
+
   const [merchant, setMerchant] = useState('');
   const [amountInput, setAmountInput] = useState('');
+  const [transactionDate, setTransactionDate] = useState(getTodayDateString());
   const [category, setCategory] = useState(
     mockCategorySettings[0].category_name
   );
 
-  const selectedCategory = categories[selectedCategoryIndex];
+  const selectedCategory =
+    categories[selectedCategoryIndex] ?? categories[0] ?? mockCategorySettings[0];
+
+  const selectedBudgetCategory =
+    categories.find((item) => item.id === selectedBudgetCategoryId) ??
+    categories[selectedCategoryIndex] ??
+    selectedCategory ??
+    null;
+
   const selectedCategoryMeta = getCategoryMeta(selectedCategory.category_name);
   const SelectedCategoryIcon = selectedCategoryMeta.Icon;
 
-  const selectedEvaluation = evaluatedCategories.find(
-    (item) => item.category_name === selectedCategory.category_name
-  );
+  const selectedCategoryBudgetStatus = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const today = now.getDate();
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
-  const selectedTransactions = useMemo(
-    () =>
-      transactions.filter(
-        (transaction) =>
+    const actualSpend = transactions
+      .filter((transaction) => {
+        const [year, month] = transaction.tx_date.split('-').map(Number);
+
+        return (
+          year === currentYear &&
+          month === currentMonth &&
           transaction.final_category === selectedCategory.category_name
-      ),
-    [selectedCategory.category_name, transactions]
-  );
+        );
+      })
+      .reduce((total, transaction) => total + transaction.amount, 0);
+
+    const predictedMonthlySpend =
+      actualSpend > 0 && today > 0
+        ? Math.round((actualSpend / today) * daysInMonth)
+        : 0;
+
+    const budgetPressure =
+      selectedCategory.budget_limit > 0
+        ? predictedMonthlySpend / selectedCategory.budget_limit
+        : 0;
+
+    const budgetGap = predictedMonthlySpend - selectedCategory.budget_limit;
+
+    return {
+      actualSpend,
+      predictedMonthlySpend,
+      budgetPressure,
+      budgetGap,
+    };
+  }, [transactions, selectedCategory]);
 
   const recentTransactions = useMemo(
-    () => transactions.slice(0, 4),
+    () => transactions.slice(0, 6),
     [transactions]
   );
 
   const totalAmount = useMemo(
-    () => transactions.reduce((sum, item) => sum + item.amount, 0),
+    () =>
+      transactions
+        .filter((item) => isCurrentMonthDate(item.tx_date))
+        .reduce((sum, item) => sum + item.amount, 0),
     [transactions]
-  );
-
-  const selectedActualSpend = useMemo(
-    () => selectedTransactions.reduce((sum, item) => sum + item.amount, 0),
-    [selectedTransactions]
   );
 
   const missionCategoryCount = useMemo(
@@ -150,26 +222,147 @@ export default function TransactionsScreen() {
     [categories]
   );
 
-  const selectedPressure =
-    selectedEvaluation?.budget_pressure ??
-    (selectedCategory.budget_limit > 0
-      ? selectedActualSpend / selectedCategory.budget_limit
-      : 0);
-
+  const selectedPressure = selectedCategoryBudgetStatus.budgetPressure;
   const selectedPressureTone = getBudgetTone(selectedPressure);
   const selectedPressureColor = getBudgetColor(selectedPressure);
   const selectedPressureBg = getBudgetBg(selectedPressure);
   const selectedPressureLabel = getBudgetLabel(selectedPressure);
 
+  const loadTransactions = async () => {
+    try {
+      setIsTransactionLoading(true);
+
+      const apiTransactions = await getTransactionsFromApi();
+      setTransactions(apiTransactions);
+    } catch {
+      setTransactions([]);
+      showToast('지출 내역을 불러오지 못했어요.');
+    } finally {
+      setIsTransactionLoading(false);
+    }
+  };
+
+  const syncBudgetEditor = (targetCategory: CategorySetting) => {
+    setSelectedBudgetCategoryId(targetCategory.id);
+    setEditBudgetLimit(getBudgetInputValue(targetCategory.budget_limit));
+    setEditAlertThreshold(String(targetCategory.alert_threshold));
+    setEditIsDailyChallenge(targetCategory.is_daily_challenge);
+  };
+
+  const loadCategories = async () => {
+    try {
+      setIsCategoryLoading(true);
+
+      const apiCategories = await getCategoriesFromApi();
+
+      setCategories(apiCategories);
+
+      if (apiCategories.length > 0) {
+        const currentSelected = selectedBudgetCategoryId
+          ? apiCategories.find(
+              (item) => item.id === selectedBudgetCategoryId
+            )
+          : null;
+
+        const nextCategory = currentSelected ?? apiCategories[0];
+
+        const nextIndex = apiCategories.findIndex(
+          (item) => item.id === nextCategory.id
+        );
+
+        setSelectedCategoryIndex(nextIndex >= 0 ? nextIndex : 0);
+        setCategory(nextCategory.category_name);
+        syncBudgetEditor(nextCategory);
+      }
+    } catch {
+      showToast('카테고리 정보를 불러오지 못했어요.');
+    } finally {
+      setIsCategoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTransactions();
+    loadCategories();
+  }, []);
+
+  const handleSaveBudgetCategory = async () => {
+    if (!selectedBudgetCategory) {
+      showToast('수정할 항목을 선택해 주세요.');
+      return;
+    }
+
+    const parsedBudgetLimit = parseAmountInput(editBudgetLimit);
+    const parsedAlertThreshold = Number(editAlertThreshold);
+
+    if (!Number.isInteger(parsedBudgetLimit) || parsedBudgetLimit < 0) {
+      showToast('월 예산을 숫자로 입력해 주세요.');
+      return;
+    }
+
+    if (
+      !Number.isInteger(parsedAlertThreshold) ||
+      parsedAlertThreshold < 1 ||
+      parsedAlertThreshold > 100
+    ) {
+      showToast('알림 기준은 1부터 100 사이로 입력해 주세요.');
+      return;
+    }
+
+    try {
+      setIsCategorySaving(true);
+
+      const updatedCategory = await updateCategoryFromApi(
+        selectedBudgetCategory.id,
+        {
+          budget_limit: parsedBudgetLimit,
+          alert_threshold: parsedAlertThreshold,
+          is_daily_challenge: editIsDailyChallenge,
+        }
+      );
+
+      setCategories((prev) =>
+        prev.map((item) =>
+          item.id === updatedCategory.id ? updatedCategory : item
+        )
+      );
+
+      const nextIndex = categories.findIndex(
+        (item) => item.id === updatedCategory.id
+      );
+
+      if (nextIndex >= 0) {
+        setSelectedCategoryIndex(nextIndex);
+      }
+
+      setCategory(updatedCategory.category_name);
+      syncBudgetEditor(updatedCategory);
+
+      showToast('예산 설정을 저장했어요.');
+    } catch {
+      showToast('예산 설정을 저장하지 못했어요.');
+    } finally {
+      setIsCategorySaving(false);
+    }
+  };
+
   const handleSelectCategory = (index: number) => {
+    const nextCategory = categories[index];
+
+    if (!nextCategory) {
+      return;
+    }
+
     setSelectedCategoryIndex(index);
-    setCategory(categories[index].category_name);
+    setCategory(nextCategory.category_name);
+    syncBudgetEditor(nextCategory);
   };
 
   const openAddModal = () => {
     setEditingTransactionId(null);
     setMerchant('');
     setAmountInput('');
+    setTransactionDate(getTodayDateString());
     setCategory(selectedCategory.category_name);
     setIsModalVisible(true);
   };
@@ -178,6 +371,7 @@ export default function TransactionsScreen() {
     setEditingTransactionId(transaction.tx_id);
     setMerchant(transaction.merchant_name);
     setAmountInput(formatAmountInput(String(transaction.amount)));
+    setTransactionDate(transaction.tx_date);
     setCategory(transaction.final_category);
     setIsModalVisible(true);
   };
@@ -187,6 +381,7 @@ export default function TransactionsScreen() {
     setEditingTransactionId(null);
     setMerchant('');
     setAmountInput('');
+    setTransactionDate(getTodayDateString());
     setCategory(selectedCategory.category_name);
   };
 
@@ -194,7 +389,7 @@ export default function TransactionsScreen() {
     setAmountInput(formatAmountInput(value));
   };
 
-  const handleSaveTransaction = () => {
+  const handleSaveTransaction = async () => {
     if (!merchant.trim()) {
       showToast('결제처를 입력해 주세요.');
       return;
@@ -212,114 +407,87 @@ export default function TransactionsScreen() {
       return;
     }
 
-    if (editingTransactionId) {
-      setTransactions((prev) =>
-        prev.map((item) =>
-          item.tx_id === editingTransactionId
-            ? {
-                ...item,
-                merchant_name: merchant.trim(),
-                amount: numericAmount,
-                final_category: category,
-                is_user_corrected: true,
-              }
-            : item
-        )
-      );
-
-      showToast('지출 내역이 수정됐어요.');
-    } else {
-      const newTransaction: Transaction = {
-        tx_id: `manual-${Date.now()}`,
-        user_id: selectedCategory.user_id,
-        tx_date: '2026-05-18',
-        tx_time: '오늘',
-        amount: numericAmount,
-        merchant_name: merchant.trim(),
-        mydata_category: '직접 입력',
-        final_category: category,
-        is_user_corrected: true,
-      };
-
-      setTransactions((prev) => [newTransaction, ...prev]);
-      showToast(`${category}에 ${formatWon(numericAmount)} 지출이 추가됐어요.`);
-    }
-
-    const nextIndex = categories.findIndex(
-      (item) => item.category_name === category
-    );
-
-    if (nextIndex >= 0) {
-      setSelectedCategoryIndex(nextIndex);
-    }
-
-    closeModal();
-  };
-
-  const handleDeleteTransaction = (transaction: Transaction) => {
-    Alert.alert(
-      '지출 삭제',
-      `${transaction.merchant_name} 지출을 삭제할까요?`,
-      [
-        {
-          text: '취소',
-          style: 'cancel',
-        },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: () => {
-            setTransactions((prev) =>
-              prev.filter((item) => item.tx_id !== transaction.tx_id)
-            );
-            showToast('지출 내역을 삭제했어요.');
-          },
-        },
-      ]
-    );
-  };
-
-  const handleImportTransactions = () => {
-    const existingIds = new Set(transactions.map((item) => item.tx_id));
-    const nextImported = importedTransactions.filter(
-      (item) => !existingIds.has(item.tx_id)
-    );
-
-    if (nextImported.length === 0) {
-      showToast('이미 최신 내역을 불러왔어요.');
+    if (!isValidDateString(transactionDate)) {
+      showToast('날짜는 YYYY-MM-DD 형식으로 입력해 주세요.');
       return;
     }
 
-    setTransactions((prev) => [...nextImported, ...prev]);
-    showToast(`${nextImported.length}건의 지출 내역을 불러왔어요.`);
+    try {
+      if (editingTransactionId) {
+        const updatedTransaction = await updateTransactionFromApi(
+          editingTransactionId,
+          {
+            tx_date: transactionDate,
+            merchant_name: merchant.trim(),
+            amount: numericAmount,
+            final_category: category,
+            is_user_corrected: true,
+          }
+        );
+
+        setTransactions((prev) =>
+          prev.map((item) =>
+            item.tx_id === editingTransactionId ? updatedTransaction : item
+          )
+        );
+
+        showToast('지출 내역이 수정됐어요.');
+      } else {
+        const newTransaction = await createTransactionFromApi({
+          tx_date: transactionDate,
+          tx_time: getCurrentTimeString(),
+          amount: numericAmount,
+          merchant_name: merchant.trim(),
+          mydata_category: '직접 입력',
+          final_category: category,
+          is_user_corrected: true,
+        });
+
+        setTransactions((prev) => [newTransaction, ...prev]);
+        showToast(`${category}에 ${formatWon(numericAmount)} 지출이 추가됐어요.`);
+      }
+
+      const nextIndex = categories.findIndex(
+        (item) => item.category_name === category
+      );
+
+      if (nextIndex >= 0) {
+        const nextCategory = categories[nextIndex];
+
+        setSelectedCategoryIndex(nextIndex);
+        syncBudgetEditor(nextCategory);
+      }
+
+      closeModal();
+    } catch {
+      showToast('지출 내역을 저장하지 못했어요.');
+    }
   };
 
-  const toggleDailyMission = (categoryId: string) => {
-    const wasIncluded = selectedCategory.is_daily_challenge;
+  const handleDeleteTransaction = async (transaction: Transaction) => {
+    const shouldDelete =
+      Platform.OS === 'web'
+        ? window.confirm(`${transaction.merchant_name} 지출을 삭제할까요?`)
+        : true;
 
-    setCategories((prev) =>
-      prev.map((item) =>
-        item.id === categoryId
-          ? {
-              ...item,
-              is_daily_challenge: !item.is_daily_challenge,
-            }
-          : item
-      )
-    );
+    if (!shouldDelete) {
+      return;
+    }
 
-    showToast(
-      wasIncluded
-        ? `${selectedCategory.category_name} 항목을 미션에서 제외했어요.`
-        : `${selectedCategory.category_name} 항목을 미션에 포함했어요.`
-    );
+    try {
+      await deleteTransactionFromApi(transaction.tx_id);
+
+      setTransactions((prev) =>
+        prev.filter((item) => item.tx_id !== transaction.tx_id)
+      );
+
+      showToast('지출 내역을 삭제했어요.');
+    } catch {
+      showToast('지출 내역을 삭제하지 못했어요.');
+    }
   };
 
-  const renderTransactionCard = (
-    transaction: Transaction,
-    delay: number,
-    showOriginalCategory = false
-  ) => {
+  const renderTransactionCard = (transaction: Transaction, delay: number) => {
     const transactionMeta = getCategoryMeta(transaction.final_category);
     const TransactionIcon = transactionMeta.Icon;
 
@@ -345,9 +513,7 @@ export default function TransactionsScreen() {
 
             <View style={styles.badgeRow}>
               <Text style={styles.categoryBadge}>
-                {showOriginalCategory
-                  ? `Moni 분류 · ${transaction.final_category}`
-                  : transaction.final_category}
+                {transaction.final_category}
               </Text>
 
               {transaction.is_user_corrected ? (
@@ -356,12 +522,6 @@ export default function TransactionsScreen() {
                 <Text style={styles.rawBadge}>기본 분류</Text>
               )}
             </View>
-
-            {showOriginalCategory ? (
-              <Text style={styles.categoryMeta}>
-                원래 분류: {transaction.mydata_category}
-              </Text>
-            ) : null}
 
             <View style={styles.transactionActionRow}>
               <Pressable
@@ -408,8 +568,8 @@ export default function TransactionsScreen() {
       >
         <AppScreenHeader
           label="SPENDING"
-          title="지출을 기록하고 예산 흐름을 확인하세요."
-          description="방금 쓴 돈을 바로 기록하고, 항목별 예산 상태를 한눈에 볼 수 있습니다."
+          title="지출을 빠르게 기록하고 확인하세요."
+          description="가장 자주 쓰는 지출 추가와 최근 내역을 먼저 보여드립니다."
           Icon={ReceiptText}
         />
 
@@ -433,40 +593,24 @@ export default function TransactionsScreen() {
 
               <View style={styles.actionTextBox}>
                 <Text style={styles.actionTitle}>지출 추가</Text>
-                <Text style={styles.actionDescription}>방금 쓴 돈 기록하기</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              style={styles.secondaryActionButton}
-              onPress={handleImportTransactions}
-            >
-              <View style={styles.actionIconBubble}>
-                <ArrowDownToLine
-                  size={21}
-                  color={colors.text}
-                  strokeWidth={2.8}
-                />
-              </View>
-
-              <View style={styles.actionTextBox}>
-                <Text style={styles.actionTitle}>내역 불러오기</Text>
-                <Text style={styles.actionDescription}>카드 지출 가져오기</Text>
+                <Text style={styles.actionDescription}>방금 쓴 돈 기록</Text>
               </View>
             </Pressable>
           </View>
 
-          <View style={styles.summaryChipRow}>
-            <View style={styles.summaryChip}>
-              <ReceiptText size={14} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.summaryChipText}>
-                {transactions.length}건 기록
-              </Text>
+          <View style={styles.summaryLine}>
+            <View style={styles.summaryItem}>
+              <ReceiptText
+                size={15}
+                color={colors.butterBrown}
+                strokeWidth={2.8}
+              />
+              <Text style={styles.summaryText}>{transactions.length}건 기록</Text>
             </View>
 
-            <View style={styles.summaryChip}>
-              <Target size={14} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.summaryChipText}>
+            <View style={styles.summaryItem}>
+              <Target size={15} color={colors.butterBrown} strokeWidth={2.8} />
+              <Text style={styles.summaryText}>
                 미션 포함 {missionCategoryCount}개
               </Text>
             </View>
@@ -476,7 +620,7 @@ export default function TransactionsScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>최근 지출</Text>
           <Text style={styles.sectionSubtitle}>
-            가장 최근에 기록된 지출입니다. 잘못된 항목은 바로 수정할 수 있습니다.
+            최근 내역만 보여드립니다. 잘못된 항목은 바로 수정할 수 있습니다.
           </Text>
         </View>
 
@@ -484,7 +628,7 @@ export default function TransactionsScreen() {
           <GlassCard delay={160} tone="soft">
             <EmptyState
               title="아직 지출 기록이 없어요."
-              description="오늘 쓴 돈을 하나만 기록해보세요. 리포트와 미션이 더 정확해집니다."
+              description="오늘 쓴 돈을 하나만 기록해도 리포트와 미션이 더 정확해집니다."
               actionLabel="지출 추가하기"
               onAction={openAddModal}
               Icon={PencilLine}
@@ -492,161 +636,211 @@ export default function TransactionsScreen() {
           </GlassCard>
         ) : (
           recentTransactions.map((transaction, index) =>
-            renderTransactionCard(transaction, 160 + index * 55)
+            renderTransactionCard(transaction, 160 + index * 50)
           )
         )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>항목별 예산 상태</Text>
           <Text style={styles.sectionSubtitle}>
-            자주 관리할 항목을 선택해 예산 흐름을 확인하세요.
+            확인할 항목을 선택하면 예산 흐름만 간단히 보여드립니다.
           </Text>
         </View>
 
-        <JellySegmentedControl
-          items={categories.map((item) => item.category_name)}
-          selectedIndex={selectedCategoryIndex}
-          onChange={handleSelectCategory}
-        />
-
-        <GlassCard delay={380} tone="butter" style={styles.categoryCard}>
-          <View style={styles.categoryTopRow}>
-            <View style={styles.categoryIconBubble}>
-              <SelectedCategoryIcon
-                size={27}
-                color={colors.text}
-                strokeWidth={2.8}
-              />
-            </View>
-
-            <View style={styles.categoryTitleBox}>
-              <Text style={styles.cardLabel}>선택한 항목</Text>
-              <Text style={styles.categoryTitle}>
-                {selectedCategory.category_name}
-              </Text>
-              <Text style={styles.categoryDescription}>
-                {selectedCategoryMeta.description}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.rateBadge,
-                {
-                  backgroundColor: selectedPressureBg,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.rateBadgeText,
-                  {
-                    color: selectedPressureColor,
-                  },
-                ]}
-              >
-                {selectedPressureLabel}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.categoryStatusText}>
-            {getFriendlyBudgetMessage(selectedPressure)}
-          </Text>
-
-          <View style={styles.budgetInfoBox}>
-            <View>
-              <Text style={styles.infoLabel}>월 예산</Text>
-              <Text style={styles.budgetValue}>
-                {formatWon(selectedCategory.budget_limit)}
-              </Text>
-            </View>
-
-            <View style={styles.rightInfo}>
-              <Text style={styles.infoLabel}>기록된 지출</Text>
-              <Text style={styles.currentSpendValue}>
-                {formatWon(selectedActualSpend)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.progressInfoRow}>
-            <Text style={styles.progressLabel}>예산 사용 예상</Text>
-            <Text
-              style={[
-                styles.progressValue,
-                {
-                  color: selectedPressureColor,
-                },
-              ]}
-            >
-              {getBudgetSignalText(selectedPressure)}
-            </Text>
-          </View>
-
-          <AnimatedProgressBar
-            progress={selectedPressure}
-            tone={selectedPressureTone}
-          />
-
-          <View style={styles.predictionBox}>
-            <Text style={styles.predictionTitle}>월말 예상</Text>
-            <Text style={styles.predictionText}>
-              {selectedEvaluation
-                ? `${formatWon(
-                    selectedEvaluation.predicted_monthly_spend
-                  )} 정도 사용할 것으로 보여요.`
-                : '아직 예상할 만큼의 기록이 충분하지 않습니다.'}
-            </Text>
-          </View>
-
-          <View style={styles.challengeSwitchBox}>
-            <View style={styles.switchTextBox}>
-              <Text style={styles.switchTitle}>오늘의 미션에 포함</Text>
-              <Text style={styles.switchDescription}>
-                줄이고 싶은 항목이라면 켜두세요. 꺼두어도 예산 관리는 계속됩니다.
-              </Text>
-            </View>
-
-            <Switch
-              value={selectedCategory.is_daily_challenge}
-              onValueChange={() => toggleDailyMission(selectedCategory.id)}
-              thumbColor={
-                selectedCategory.is_daily_challenge
-                  ? colors.butterStrong
-                  : '#F4F4F4'
-              }
-              trackColor={{
-                true: colors.butterSoft,
-                false: colors.gray200,
-              }}
-            />
-          </View>
-        </GlassCard>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            {selectedCategory.category_name} 지출만 보기
-          </Text>
-          <Text style={styles.sectionSubtitle}>
-            선택한 항목에 해당하는 지출입니다.
-          </Text>
-        </View>
-
-        {selectedTransactions.length === 0 ? (
-          <GlassCard delay={460} tone="soft">
+        {categories.length === 0 ? (
+          <GlassCard delay={420} tone="soft">
             <EmptyState
-              title={`${selectedCategory.category_name} 기록이 없어요.`}
-              description="이 항목의 지출을 추가하면 예산 상태를 더 정확하게 확인할 수 있습니다."
-              actionLabel="지출 추가하기"
-              onAction={openAddModal}
-              Icon={SelectedCategoryIcon}
+              title="예산 항목을 불러오지 못했어요."
+              description="잠시 후 다시 시도해 주세요. 계정 생성 후 기본 예산 항목이 자동으로 준비됩니다."
+              actionLabel="다시 불러오기"
+              onAction={loadCategories}
+              Icon={Target}
             />
           </GlassCard>
         ) : (
-          selectedTransactions.map((transaction, index) =>
-            renderTransactionCard(transaction, 460 + index * 50, true)
-          )
+          <>
+            <JellySegmentedControl
+              items={categories.map((item) => item.category_name)}
+              selectedIndex={selectedCategoryIndex}
+              onChange={handleSelectCategory}
+            />
+
+            <GlassCard delay={420} tone="butter" style={styles.categoryCard}>
+              <View style={styles.categoryTopRow}>
+                <View style={styles.categoryIconBubble}>
+                  <SelectedCategoryIcon
+                    size={27}
+                    color={colors.text}
+                    strokeWidth={2.8}
+                  />
+                </View>
+
+                <View style={styles.categoryTitleBox}>
+                  <Text style={styles.cardLabel}>선택한 항목</Text>
+                  <Text style={styles.categoryTitle}>
+                    {selectedCategory.category_name}
+                  </Text>
+                  <Text style={styles.categoryDescription}>
+                    {selectedCategoryMeta.description}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.rateBadge,
+                    {
+                      backgroundColor: selectedPressureBg,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.rateBadgeText,
+                      {
+                        color: selectedPressureColor,
+                      },
+                    ]}
+                  >
+                    {selectedPressureLabel}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.categoryMetricList}>
+                <View style={styles.categoryMetricItem}>
+                  <Text style={styles.metricLabel}>월 예산</Text>
+                  <Text style={styles.metricValue}>
+                    {formatWon(selectedCategory.budget_limit)}
+                  </Text>
+                </View>
+
+                <View style={styles.categoryMetricItem}>
+                  <Text style={styles.metricLabel}>기록된 지출</Text>
+                  <Text style={styles.metricValue}>
+                    {formatWon(selectedCategoryBudgetStatus.actualSpend)}
+                  </Text>
+                </View>
+
+                <View style={styles.categoryMetricItem}>
+                  <Text style={styles.metricLabel}>월말 예상</Text>
+                  <Text style={styles.metricValue}>
+                    {selectedCategoryBudgetStatus.predictedMonthlySpend > 0
+                      ? formatWon(
+                          selectedCategoryBudgetStatus.predictedMonthlySpend
+                        )
+                      : '기록 부족'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.progressInfoRow}>
+                <Text style={styles.progressLabel}>예산 사용 예상</Text>
+                <Text
+                  style={[
+                    styles.progressValue,
+                    {
+                      color: selectedPressureColor,
+                    },
+                  ]}
+                >
+                  {getBudgetSignalText(selectedPressure)}
+                </Text>
+              </View>
+
+              <AnimatedProgressBar
+                progress={selectedPressure}
+                tone={selectedPressureTone}
+              />
+
+              <Text style={styles.categoryStatusText}>
+                {getFriendlyBudgetMessage(selectedPressure)}
+              </Text>
+            </GlassCard>
+
+            {selectedBudgetCategory ? (
+              <GlassCard
+                delay={470}
+                tone="butter"
+                style={styles.budgetEditorCard}
+              >
+                <View style={styles.budgetEditorHeader}>
+                  <View>
+                    <Text style={styles.cardLabel}>예산 설정</Text>
+                    <Text style={styles.budgetEditorTitle}>
+                      {selectedBudgetCategory.category_name}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.budgetEditorBadge}>
+                    {selectedBudgetCategory.is_daily_challenge
+                      ? '미션 포함'
+                      : '미션 제외'}
+                  </Text>
+                </View>
+
+                <Text style={styles.budgetEditLabel}>월 예산</Text>
+                <TextInput
+                  style={styles.budgetEditInput}
+                  value={editBudgetLimit}
+                  onChangeText={setEditBudgetLimit}
+                  keyboardType="number-pad"
+                  placeholder="예: 30000"
+                  placeholderTextColor={colors.mutedText}
+                />
+
+                <Text style={styles.budgetEditHint}>
+                  현재 설정: {formatWon(selectedBudgetCategory.budget_limit)}
+                </Text>
+
+                <Text style={styles.budgetEditLabel}>알림 기준</Text>
+                <View style={styles.thresholdRow}>
+                  <TextInput
+                    style={[styles.budgetEditInput, styles.thresholdInput]}
+                    value={editAlertThreshold}
+                    onChangeText={setEditAlertThreshold}
+                    keyboardType="number-pad"
+                    placeholder="80"
+                    placeholderTextColor={colors.mutedText}
+                  />
+                  <Text style={styles.thresholdSuffix}>%</Text>
+                </View>
+
+                <View style={styles.budgetSwitchRow}>
+                  <View style={styles.budgetSwitchTextBox}>
+                    <Text style={styles.budgetSwitchTitle}>
+                      오늘의 미션 후보에 포함
+                    </Text>
+                    <Text style={styles.budgetSwitchDescription}>
+                      켜두면 이 항목도 소비 미션 생성에 사용할 수 있습니다.
+                    </Text>
+                  </View>
+
+                  <Switch
+                    value={editIsDailyChallenge}
+                    onValueChange={setEditIsDailyChallenge}
+                    trackColor={{
+                      false: 'rgba(122,111,91,0.18)',
+                      true: colors.butterSoft,
+                    }}
+                    thumbColor={colors.backgroundWhite}
+                  />
+                </View>
+
+                <Pressable
+                  style={[
+                    styles.budgetSaveButton,
+                    isCategorySaving && styles.disabledBudgetSaveButton,
+                  ]}
+                  onPress={handleSaveBudgetCategory}
+                  disabled={isCategorySaving}
+                >
+                  <Text style={styles.budgetSaveButtonText}>
+                    {isCategorySaving ? '저장 중...' : '예산 설정 저장'}
+                  </Text>
+                </Pressable>
+              </GlassCard>
+            ) : null}
+          </>
         )}
       </ScrollView>
 
@@ -664,7 +858,7 @@ export default function TransactionsScreen() {
                   {editingTransactionId ? '지출 수정' : '지출 추가'}
                 </Text>
                 <Text style={styles.modalSubtitle}>
-                  결제처, 금액, 항목을 입력해 주세요.
+                  날짜, 결제처, 금액, 항목을 입력하면 됩니다.
                 </Text>
               </View>
 
@@ -672,6 +866,23 @@ export default function TransactionsScreen() {
                 <X size={20} color={colors.text} strokeWidth={2.8} />
               </Pressable>
             </View>
+
+            <Text style={styles.inputLabel}>날짜</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.mutedText}
+              keyboardType="numbers-and-punctuation"
+              value={transactionDate}
+              onChangeText={setTransactionDate}
+            />
+
+            <Pressable
+              style={styles.dateQuickButton}
+              onPress={() => setTransactionDate(getTodayDateString())}
+            >
+              <Text style={styles.dateQuickButtonText}>오늘 날짜로 설정</Text>
+            </Pressable>
 
             <Text style={styles.inputLabel}>결제처</Text>
             <TextInput
@@ -756,7 +967,7 @@ const styles = StyleSheet.create({
     width: 230,
     height: 230,
     borderRadius: 999,
-    backgroundColor: 'rgba(242, 201, 76, 0.30)',
+    backgroundColor: 'rgba(242, 201, 76, 0.28)',
   },
   backgroundOrbSmall: {
     position: 'absolute',
@@ -765,7 +976,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.58)',
   },
   backgroundOrbTiny: {
     position: 'absolute',
@@ -774,14 +985,14 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 240, 184, 0.46)',
+    backgroundColor: 'rgba(255, 240, 184, 0.38)',
   },
   container: {
     padding: 20,
     paddingBottom: 128,
   },
   actionCard: {
-    backgroundColor: colors.butterCard,
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
   actionTopRow: {
     flexDirection: 'row',
@@ -811,11 +1022,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.butterStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
   },
   actionButtonRow: {
     gap: 10,
@@ -831,23 +1037,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  secondaryActionButton: {
-    minHeight: 72,
-    borderRadius: 24,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    backgroundColor: colors.whiteCard,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   actionIconBubble: {
     width: 42,
     height: 42,
     borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.56)',
+    backgroundColor: 'rgba(255,255,255,0.38)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -866,30 +1060,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.subText,
   },
-  summaryChipRow: {
+  summaryLine: {
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
-    gap: 8,
+    gap: 14,
     flexWrap: 'wrap',
   },
-  summaryChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  summaryItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-  summaryChipText: {
+  summaryText: {
     fontFamily: typography.fontFamily,
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '900',
     color: colors.butterBrown,
   },
   sectionHeader: {
-    marginTop: 10,
+    marginTop: 8,
     marginBottom: 12,
   },
   sectionTitle: {
@@ -977,18 +1168,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
     color: colors.subText,
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
     overflow: 'hidden',
-  },
-  categoryMeta: {
-    marginTop: 8,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    color: colors.mutedText,
   },
   transactionActionRow: {
     flexDirection: 'row',
@@ -999,9 +1184,9 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 999,
     paddingHorizontal: 11,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
+    backgroundColor: 'rgba(255, 247, 214, 0.34)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255,255,255,0.28)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -1017,13 +1202,13 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     marginTop: 16,
-    backgroundColor: colors.butterCard,
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
   categoryTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   categoryIconBubble: {
     width: 62,
@@ -1032,11 +1217,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.butterStrong,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
   },
   categoryTitleBox: {
     flex: 1,
@@ -1065,45 +1245,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  categoryStatusText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-    marginBottom: 16,
+  categoryMetricList: {
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
+    gap: 9,
+    marginBottom: 14,
   },
-  budgetInfoBox: {
-    padding: 16,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  categoryMetricItem: {
+    minHeight: 42,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 16,
   },
-  infoLabel: {
+  metricLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
-    fontWeight: '800',
     color: colors.subText,
-    marginBottom: 5,
   },
-  budgetValue: {
+  metricValue: {
     fontFamily: typography.fontFamily,
-    fontSize: 22,
+    fontSize: 14,
     fontWeight: '900',
     color: colors.text,
-  },
-  rightInfo: {
-    alignItems: 'flex-end',
-  },
-  currentSpendValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 18,
-    fontWeight: '900',
-    color: colors.butterDeep,
   },
   progressInfoRow: {
     flexDirection: 'row',
@@ -1124,53 +1288,128 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  predictionBox: {
-    marginTop: 14,
-    padding: 14,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  categoryStatusText: {
+    marginTop: 12,
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.subText,
   },
-  predictionTitle: {
+  budgetEditorCard: {
+    marginTop: 14,
+    backgroundColor: 'rgba(255,248,216,0.42)',
+  },
+  budgetEditorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  budgetEditorTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+    letterSpacing: -0.5,
+  },
+  budgetEditorBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: colors.butterPale,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.butterBrown,
+  },
+  budgetEditLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
     fontWeight: '900',
-    color: colors.butterBrown,
-    marginBottom: 5,
-  },
-  predictionText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 20,
     color: colors.subText,
+    marginBottom: 7,
   },
-  challengeSwitchBox: {
-    marginTop: 14,
-    padding: 15,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 247, 214, 0.68)',
+  budgetEditInput: {
+    minHeight: 52,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.28)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255,255,255,0.38)',
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  budgetEditHint: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12.5,
+    color: colors.mutedText,
+    marginBottom: 14,
+  },
+  thresholdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  thresholdInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  thresholdSuffix: {
+    fontFamily: typography.fontFamily,
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  budgetSwitchRow: {
+    minHeight: 68,
+    borderRadius: 21,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.26)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.34)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+    marginBottom: 16,
   },
-  switchTextBox: {
+  budgetSwitchTextBox: {
     flex: 1,
   },
-  switchTitle: {
+  budgetSwitchTitle: {
     fontFamily: typography.fontFamily,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     color: colors.text,
     marginBottom: 4,
   },
-  switchDescription: {
+  budgetSwitchDescription: {
     fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: colors.subText,
+  },
+  budgetSaveButton: {
+    height: 52,
+    borderRadius: 19,
+    backgroundColor: colors.butterStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabledBudgetSaveButton: {
+    opacity: 0.62,
+  },
+  budgetSaveButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.text,
   },
   modalBackdrop: {
     flex: 1,
@@ -1181,7 +1420,7 @@ const styles = StyleSheet.create({
   modalCard: {
     padding: 22,
     borderRadius: 30,
-    backgroundColor: 'rgba(255, 251, 240, 0.98)',
+    backgroundColor: '#FFFBF0',
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
@@ -1232,30 +1471,45 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 14,
   },
+  dateQuickButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: colors.butterPale,
+    marginTop: -2,
+    marginBottom: 10,
+  },
+  dateQuickButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.butterBrown,
+  },
   categoryChipGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 18,
+    marginBottom: 16,
   },
   categoryChip: {
-    height: 40,
+    minHeight: 38,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
+    paddingHorizontal: 11,
+    backgroundColor: 'rgba(255,255,255,0.5)',
     borderWidth: 1,
     borderColor: colors.glassBorder,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   selectedCategoryChip: {
     backgroundColor: colors.butterStrong,
-    borderColor: 'rgba(215, 169, 0, 0.22)',
+    borderColor: 'rgba(215,169,0,0.38)',
   },
   categoryChipText: {
     fontFamily: typography.fontFamily,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     color: colors.butterBrown,
   },
@@ -1263,9 +1517,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   modalButton: {
-    marginTop: 2,
+    marginTop: 4,
   },
   modalSecondaryButton: {
-    marginTop: 10,
+    marginTop: 8,
   },
 });

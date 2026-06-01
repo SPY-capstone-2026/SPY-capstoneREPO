@@ -1,5 +1,6 @@
-import { router } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   BarChart3,
@@ -8,22 +9,18 @@ import {
   LineChart,
   Sparkles,
   TrendingUp,
-  Trophy,
   WalletCards,
 } from 'lucide-react-native';
 
-import { AnimatedButton } from '@/components/AnimatedButton';
 import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
+import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { mockTodayChallenge, mockTransactions } from '@/constants/mockAiResult';
-import {
-  formatWon,
-  getBudgetGap,
-  getChallengeTone,
-  sortEvaluatedCategories,
-} from '@/utils/aiFormat';
+import { useToast } from '@/contexts/ToastContext';
+import { getMonthlyReportFromApi } from '@/services/reportService';
+import type { MonthlyReportResponse } from '@/types/api';
+import { formatWon } from '@/utils/aiFormat';
 import {
   getBudgetBg,
   getBudgetColor,
@@ -34,47 +31,54 @@ import {
 } from '@/utils/budgetStatus';
 import { getCategoryMeta } from '@/utils/categoryMeta';
 
-const weeklyTrend = [
-  {
-    label: '월',
-    amount: 3200,
-    value: 0.32,
+type MonthlyReportData = MonthlyReportResponse['data'];
+
+const defaultReportData: MonthlyReportData = {
+  month: '',
+  monthly_summary: {
+    total_spend: 0,
+    budget_limit: 0,
+    predicted_monthly_spend: 0,
+    budget_pressure: 0,
+    transaction_count: 0,
   },
-  {
-    label: '화',
-    amount: 7800,
-    value: 0.58,
-  },
-  {
-    label: '수',
-    amount: 4500,
-    value: 0.42,
-  },
-  {
-    label: '목',
-    amount: 12800,
-    value: 0.78,
-  },
-  {
-    label: '금',
-    amount: 6200,
-    value: 0.5,
-  },
-  {
-    label: '토',
-    amount: 15400,
-    value: 0.92,
-  },
-  {
-    label: '일',
-    amount: 5800,
-    value: 0.46,
-  },
-];
+  weekly_trend: [
+    { label: '월', amount: 0 },
+    { label: '화', amount: 0 },
+    { label: '수', amount: 0 },
+    { label: '목', amount: 0 },
+    { label: '금', amount: 0 },
+    { label: '토', amount: 0 },
+    { label: '일', amount: 0 },
+  ],
+  evaluated_categories: [],
+};
+
+function getWeeklyAverage(weeklyTrend: MonthlyReportData['weekly_trend']) {
+  if (weeklyTrend.length === 0) {
+    return 0;
+  }
+
+  const sum = weeklyTrend.reduce((total, item) => total + item.amount, 0);
+  return Math.round(sum / weeklyTrend.length);
+}
+
+function getPeakDay(weeklyTrend: MonthlyReportData['weekly_trend']) {
+  if (weeklyTrend.length === 0) {
+    return {
+      label: '월',
+      amount: 0,
+    };
+  }
+
+  return weeklyTrend.reduce((peak, item) =>
+    item.amount > peak.amount ? item : peak
+  );
+}
 
 function getFriendlyCategoryMessage(pressure: number) {
   if (pressure >= 1.5) {
-    return '이번 달에는 특히 신경 써야 하는 항목이에요.';
+    return '가장 먼저 관리하면 좋은 항목이에요.';
   }
 
   if (pressure >= 1.1) {
@@ -82,49 +86,65 @@ function getFriendlyCategoryMessage(pressure: number) {
   }
 
   if (pressure >= 0.8) {
-    return '아직 괜찮지만 속도를 살짝 늦추면 좋아요.';
+    return '조금만 신경 쓰면 안정적으로 유지할 수 있어요.';
   }
 
   return '안정적으로 관리되고 있어요.';
 }
 
-function getWeeklyAverage() {
-  const sum = weeklyTrend.reduce((total, item) => total + item.amount, 0);
-  return Math.round(sum / weeklyTrend.length);
-}
-
-function getPeakDay() {
-  return weeklyTrend.reduce((peak, item) =>
-    item.amount > peak.amount ? item : peak
-  );
-}
-
 export default function ReportScreen() {
-  const mission = mockTodayChallenge;
-  const metadata = mission.ai_metadata;
+  const { showToast } = useToast();
 
-  const evaluatedCategories = sortEvaluatedCategories(
-    metadata.evaluated_categories
+  const [report, setReport] = useState<MonthlyReportData>(defaultReportData);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const monthlySummary = report.monthly_summary;
+  const weeklyTrend = report.weekly_trend;
+  const evaluatedCategories = report.evaluated_categories;
+
+  const hasMonthlyTransactions = monthlySummary.transaction_count > 0;
+
+  const pressureTone = getBudgetTone(monthlySummary.budget_pressure);
+  const pressureColor = getBudgetColor(monthlySummary.budget_pressure);
+  const pressureBg = getBudgetBg(monthlySummary.budget_pressure);
+  const pressureLabel = getBudgetLabel(monthlySummary.budget_pressure);
+
+  const weeklyAverage = getWeeklyAverage(weeklyTrend);
+  const peakDay = getPeakDay(weeklyTrend);
+
+  const maxWeeklyAmount = useMemo(() => {
+    const maxAmount = Math.max(...weeklyTrend.map((item) => item.amount), 0);
+    return maxAmount > 0 ? maxAmount : 1;
+  }, [weeklyTrend]);
+
+  const budgetGap =
+    monthlySummary.predicted_monthly_spend - monthlySummary.budget_limit;
+
+  const loadMonthlyReport = useCallback(async () => {
+    try {
+      setIsLoading(true);
+
+      const apiReport = await getMonthlyReportFromApi();
+
+      setReport({
+        ...apiReport,
+        weekly_trend:
+          apiReport.weekly_trend.length > 0
+            ? apiReport.weekly_trend
+            : defaultReportData.weekly_trend,
+      });
+    } catch {
+      showToast('리포트를 불러오지 못했어요.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMonthlyReport();
+    }, [loadMonthlyReport])
   );
-
-  const pressureTone = getBudgetTone(metadata.budget_pressure);
-  const pressureColor = getBudgetColor(metadata.budget_pressure);
-  const pressureBg = getBudgetBg(metadata.budget_pressure);
-  const pressureLabel = getBudgetLabel(metadata.budget_pressure);
-
-  const missionTone = getChallengeTone(mission.challenge_type);
-  const missionMeta = getCategoryMeta(mission.category_name);
-  const MissionIcon = missionMeta.Icon;
-
-  const budgetGap = getBudgetGap(mission);
-
-  const totalRecordedSpend = mockTransactions.reduce(
-    (sum, transaction) => sum + transaction.amount,
-    0
-  );
-
-  const weeklyAverage = getWeeklyAverage();
-  const peakDay = getPeakDay();
 
   return (
     <LinearGradient
@@ -139,184 +159,93 @@ export default function ReportScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.headerLabel}>REPORT</Text>
-          <Text style={styles.title}>이번 달 소비 흐름을 한눈에 볼 수 있어요.</Text>
-          <Text style={styles.subtitle}>
-            가장 중요한 내용부터 보기 쉽게 정리했습니다.
-          </Text>
-        </View>
+        <AppScreenHeader
+          label="REPORT"
+          title="이번 달 소비 흐름을 한눈에 볼 수 있어요."
+          description={
+            isLoading
+              ? '이번 달 지출과 예산 흐름을 불러오고 있어요.'
+              : '가장 중요한 예산 상태와 소비 리듬만 간단히 정리했습니다.'
+          }
+          Icon={BarChart3}
+        />
 
         <GlassCard delay={80} tone="butter" style={styles.summaryCard}>
-          <View style={styles.summaryTitleRow}>
-            <View style={styles.summaryIconBubble}>
-              <Sparkles
-                size={22}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-            </View>
-
-            <View style={styles.summaryTitleBox}>
-              <Text style={styles.cardLabel}>Moni의 한 줄 정리</Text>
-              <Text style={styles.summaryTitle}>
-                이번 달은 {mission.category_name} 소비를 줄이는 게 가장 효과적이에요.
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.summaryText}>
-            현재 흐름대로라면 {mission.category_name} 지출이 예산보다 커질 가능성이 있습니다.
-            작은 미션부터 하나씩 실천하면 월말 소비를 줄이는 데 도움이 됩니다.
-          </Text>
-
-          <View style={styles.summaryChipRow}>
-            <View style={styles.summaryChip}>
-              <MissionIcon
-                size={14}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-              <Text style={styles.summaryChipText}>
-                관리 항목 {mission.category_name}
-              </Text>
-            </View>
-
-            <View style={styles.summaryChip}>
-              <Trophy size={14} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.summaryChipText}>
-                미션 보상 +{mission.xp_reward} XP
-              </Text>
-            </View>
-          </View>
-        </GlassCard>
-
-        <GlassCard delay={160} style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
+          <View style={styles.summaryTopRow}>
             <View>
-              <Text style={styles.cardLabel}>이번 달 월말 예상 지출</Text>
-              <Text style={styles.heroValue}>
-                {formatWon(metadata.predicted_monthly_spend)}
+              <Text style={styles.cardLabel}>월말 예상 지출</Text>
+              <Text style={styles.summaryValue}>
+                {formatWon(monthlySummary.predicted_monthly_spend)}
               </Text>
             </View>
 
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor: pressureBg,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  {
-                    color: pressureColor,
-                  },
-                ]}
-              >
+            <View style={[styles.statusBadge, { backgroundColor: pressureBg }]}>
+              <Text style={[styles.statusBadgeText, { color: pressureColor }]}>
                 {pressureLabel}
               </Text>
             </View>
           </View>
 
-          <View style={styles.progressRow}>
+          <View style={styles.progressInfoRow}>
             <Text style={styles.progressLabel}>예산 사용 예상</Text>
-            <Text
-              style={[
-                styles.progressValue,
-                {
-                  color: pressureColor,
-                },
-              ]}
-            >
-              {getBudgetSignalText(metadata.budget_pressure)}
+            <Text style={[styles.progressValue, { color: pressureColor }]}>
+              {getBudgetSignalText(monthlySummary.budget_pressure)}
             </Text>
           </View>
 
           <AnimatedProgressBar
-            progress={metadata.budget_pressure}
+            progress={monthlySummary.budget_pressure}
             tone={pressureTone}
           />
 
-          <Text style={styles.heroDescription}>
-            {getFriendlyBudgetMessage(metadata.budget_pressure)}
+          <Text style={styles.summaryMessage}>
+            {hasMonthlyTransactions
+              ? getFriendlyBudgetMessage(monthlySummary.budget_pressure)
+              : '아직 이번 달 지출 기록이 없어요. 소비 탭에서 지출을 추가하면 월말 예상과 예산 상태가 표시됩니다.'}
           </Text>
 
-          <View style={styles.heroChipRow}>
-            <View style={styles.heroChip}>
+          <View style={styles.metricList}>
+            <View style={styles.metricItem}>
               <WalletCards
-                size={14}
+                size={16}
                 color={colors.butterBrown}
                 strokeWidth={2.8}
               />
-              <Text style={styles.heroChipText}>
-                월 예산 {formatWon(metadata.budget_limit)}
+              <Text style={styles.metricLabel}>현재 기록</Text>
+              <Text style={styles.metricValue}>
+                {formatWon(monthlySummary.total_spend)}
               </Text>
             </View>
 
-            <View style={styles.heroChip}>
-              <CalendarDays
-                size={14}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-              <Text style={styles.heroChipText}>
-                현재 기록 {formatWon(totalRecordedSpend)}
-              </Text>
-            </View>
-
-            <View style={styles.heroChip}>
+            <View style={styles.metricItem}>
               <TrendingUp
-                size={14}
+                size={16}
                 color={colors.butterBrown}
                 strokeWidth={2.8}
               />
-              <Text style={styles.heroChipText}>
-                남은 기간 예상 {formatWon(metadata.predicted_remaining_spend)}
+              <Text style={styles.metricLabel}>월 예산</Text>
+              <Text style={styles.metricValue}>
+                {formatWon(monthlySummary.budget_limit)}
+              </Text>
+            </View>
+
+            <View style={styles.metricItem}>
+              <CalendarDays
+                size={16}
+                color={colors.butterBrown}
+                strokeWidth={2.8}
+              />
+              <Text style={styles.metricLabel}>
+                {budgetGap >= 0 ? '초과 예상' : '여유 예상'}
+              </Text>
+              <Text style={styles.metricValue}>
+                {formatWon(Math.abs(budgetGap))}
               </Text>
             </View>
           </View>
-
-          <Text style={styles.heroSubDescription}>
-            현재 흐름대로라면 월 예산보다{' '}
-            <Text style={styles.boldText}>
-              {formatWon(Math.abs(budgetGap))}
-            </Text>
-            {budgetGap >= 0
-              ? ' 정도 더 쓸 가능성이 있어요.'
-              : ' 정도 여유가 있을 것으로 보여요.'}
-          </Text>
         </GlassCard>
 
-        <View style={styles.gridRow}>
-          <GlassCard delay={240} style={styles.gridCard}>
-            <View style={styles.gridIconBubble}>
-              <BarChart3 size={19} color={colors.text} strokeWidth={2.8} />
-            </View>
-
-            <Text style={styles.gridLabel}>최근 일주일 평균</Text>
-            <Text style={styles.gridValue}>{formatWon(weeklyAverage)}</Text>
-            <Text style={styles.gridDescription}>
-              하루에 이 정도씩 쓰고 있어요.
-            </Text>
-          </GlassCard>
-
-          <GlassCard delay={300} style={styles.gridCard}>
-            <View style={styles.gridIconBubble}>
-              <Gauge size={19} color={colors.text} strokeWidth={2.8} />
-            </View>
-
-            <Text style={styles.gridLabel}>가장 많이 쓴 요일</Text>
-            <Text style={styles.gridValue}>{peakDay.label}요일</Text>
-            <Text style={styles.gridDescription}>
-              {formatWon(peakDay.amount)} 사용했어요.
-            </Text>
-          </GlassCard>
-        </View>
-
-        <GlassCard delay={380} style={styles.chartCard}>
+        <GlassCard delay={170} style={styles.chartCard}>
           <View style={styles.sectionTitleRow}>
             <LineChart size={18} color={colors.butterDeep} strokeWidth={2.8} />
             <Text style={styles.sectionTitle}>요일별 소비 리듬</Text>
@@ -326,50 +255,91 @@ export default function ReportScreen() {
             소비가 커지는 요일을 확인하면 다음 주 예산을 더 쉽게 조절할 수 있습니다.
           </Text>
 
-          <View style={styles.barChart}>
-            {weeklyTrend.map((item) => {
-              const isPeak = item.label === peakDay.label;
+          <View style={styles.chartSummaryRow}>
+            <View style={styles.chartSummaryItem}>
+              <Text style={styles.chartSummaryLabel}>하루 평균</Text>
+              <Text style={styles.chartSummaryValue}>
+                {formatWon(weeklyAverage)}
+              </Text>
+            </View>
 
-              return (
-                <View key={item.label} style={styles.barItem}>
-                  <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        isPeak && styles.peakBarFill,
-                        {
-                          height: `${Math.round(item.value * 100)}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.barAmount,
-                      isPeak && styles.peakBarAmount,
-                    ]}
-                  >
-                    {Math.round(item.amount / 1000)}천
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.barLabel,
-                      isPeak && styles.peakBarLabel,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </View>
-              );
-            })}
+            <View style={styles.chartSummaryItem}>
+              <Text style={styles.chartSummaryLabel}>가장 큰 요일</Text>
+              <Text style={styles.chartSummaryValue}>{peakDay.label}요일</Text>
+            </View>
           </View>
+
+          {hasMonthlyTransactions ? (
+            <View style={styles.barChart}>
+              {weeklyTrend.map((item) => {
+                const isPeak = item.label === peakDay.label && item.amount > 0;
+                const barHeight =
+                  item.amount > 0
+                    ? Math.max(
+                        10,
+                        Math.round((item.amount / maxWeeklyAmount) * 100)
+                      )
+                    : 8;
+
+                return (
+                  <View key={item.label} style={styles.barItem}>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          isPeak && styles.peakBarFill,
+                          {
+                            height: `${barHeight}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.barAmount,
+                        isPeak && styles.peakBarAmount,
+                      ]}
+                    >
+                      {item.amount > 0
+                        ? `${Math.round(item.amount / 1000)}천`
+                        : '0'}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.barLabel,
+                        isPeak && styles.peakBarLabel,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.inlineEmptyBox}>
+              <LineChart
+                size={24}
+                color={colors.butterBrown}
+                strokeWidth={2.8}
+              />
+              <Text style={styles.inlineEmptyTitle}>
+                아직 요일별 흐름이 없어요.
+              </Text>
+              <Text style={styles.inlineEmptyDescription}>
+                소비 탭에서 지출을 추가하면 요일별 소비 리듬이 표시됩니다.
+              </Text>
+            </View>
+          )}
 
           <View style={styles.chartNote}>
             <Sparkles size={15} color={colors.butterDeep} strokeWidth={2.8} />
             <Text style={styles.chartNoteText}>
-              {peakDay.label}요일에 소비가 가장 큽니다. 이 요일에는 미리 예산을 정해두면 좋아요.
+              {peakDay.amount > 0
+                ? `${peakDay.label}요일에 소비가 가장 큽니다. 이 요일에는 미리 사용할 금액을 정해두면 좋아요.`
+                : '아직 이번 달 지출 기록이 적습니다. 지출을 추가하면 요일별 흐름이 표시됩니다.'}
             </Text>
           </View>
         </GlassCard>
@@ -377,167 +347,112 @@ export default function ReportScreen() {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>항목별 예산 상태</Text>
           <Text style={styles.sectionSubtitle}>
-            이번 달에 조절하면 좋은 항목부터 보여드립니다.
+            이번 달에 먼저 확인하면 좋은 항목 순서입니다.
           </Text>
         </View>
 
-        {evaluatedCategories.map((category, index) => {
-          const categoryMeta = getCategoryMeta(category.category_name);
-          const CategoryIcon = categoryMeta.Icon;
+        {evaluatedCategories.length === 0 ? (
+          <GlassCard delay={260} tone="soft">
+            <View style={styles.emptyBox}>
+              <Gauge size={24} color={colors.butterBrown} strokeWidth={2.8} />
+              <Text style={styles.emptyTitle}>
+                표시할 예산 상태가 아직 없어요.
+              </Text>
+              <Text style={styles.emptyDescription}>
+                지출을 추가하면 카테고리별 예산 상태가 표시됩니다.
+              </Text>
+            </View>
+          </GlassCard>
+        ) : (
+          evaluatedCategories.map((category, index) => {
+            const categoryMeta = getCategoryMeta(category.category_name);
+            const CategoryIcon = categoryMeta.Icon;
 
-          const itemPressureTone = getBudgetTone(category.budget_pressure);
-          const itemPressureColor = getBudgetColor(category.budget_pressure);
-          const itemPressureBg = getBudgetBg(category.budget_pressure);
-          const isSelected = category.category_name === mission.category_name;
+            const itemPressureTone = getBudgetTone(category.budget_pressure);
+            const itemPressureColor = getBudgetColor(category.budget_pressure);
+            const itemPressureBg = getBudgetBg(category.budget_pressure);
 
-          return (
-            <GlassCard
-              key={category.category_name}
-              delay={460 + index * 70}
-              tone={isSelected ? 'butter' : 'soft'}
-            >
-              <View style={styles.categoryRow}>
-                <View style={styles.categoryLeft}>
-                  <View
-                    style={[
-                      styles.categoryIconBubble,
-                      isSelected && styles.selectedCategoryIconBubble,
-                    ]}
-                  >
-                    <CategoryIcon
-                      size={20}
-                      color={colors.text}
-                      strokeWidth={2.8}
-                    />
-                  </View>
+            const isPrimary = index === 0;
 
-                  <View style={styles.categoryTextBox}>
-                    <View style={styles.categoryTitleRow}>
-                      <Text style={styles.categoryName}>
-                        {category.category_name}
-                      </Text>
-
-                      <Text style={styles.categoryRank}>
-                        {category.rank ?? '-'}위
-                      </Text>
+            return (
+              <GlassCard
+                key={category.category_name}
+                delay={260 + index * 60}
+                tone={isPrimary ? 'butter' : 'soft'}
+              >
+                <View style={styles.categoryRow}>
+                  <View style={styles.categoryLeft}>
+                    <View
+                      style={[
+                        styles.categoryIconBubble,
+                        isPrimary && styles.primaryCategoryIconBubble,
+                      ]}
+                    >
+                      <CategoryIcon
+                        size={20}
+                        color={colors.text}
+                        strokeWidth={2.8}
+                      />
                     </View>
 
-                    <Text style={styles.categoryMeta}>
-                      {getFriendlyCategoryMessage(category.budget_pressure)}
+                    <View style={styles.categoryTextBox}>
+                      <View style={styles.categoryTitleRow}>
+                        <Text style={styles.categoryName}>
+                          {category.category_name}
+                        </Text>
+
+                        {isPrimary ? (
+                          <Text style={styles.primaryLabel}>우선 관리</Text>
+                        ) : null}
+                      </View>
+
+                      <Text style={styles.categoryMeta}>
+                        {getFriendlyCategoryMessage(category.budget_pressure)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.categoryBadge,
+                      {
+                        backgroundColor: itemPressureBg,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryBadgeText,
+                        {
+                          color: itemPressureColor,
+                        },
+                      ]}
+                    >
+                      {getBudgetLabel(category.budget_pressure)}
                     </Text>
                   </View>
                 </View>
 
-                <View
-                  style={[
-                    styles.pressureBadge,
-                    {
-                      backgroundColor: itemPressureBg,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.pressureBadgeText,
-                      {
-                        color: itemPressureColor,
-                      },
-                    ]}
-                  >
-                    {isSelected
-                      ? '오늘 관리'
-                      : getBudgetLabel(category.budget_pressure)}
+                <View style={styles.categoryAmountRow}>
+                  <Text style={styles.categoryAmountText}>
+                    현재 {formatWon(category.actual_spend)}
                   </Text>
-                </View>
-              </View>
-
-              <View style={styles.categoryAmountRow}>
-                <View>
-                  <Text style={styles.amountLabel}>월말 예상</Text>
-                  <Text style={styles.amountValue}>
-                    {formatWon(category.predicted_monthly_spend)}
+                  <Text style={styles.categoryAmountText}>
+                    예산 {formatWon(category.budget_limit)}
+                  </Text>
+                  <Text style={styles.categoryAmountText}>
+                    예상 {formatWon(category.predicted_monthly_spend)}
                   </Text>
                 </View>
 
-                <View style={styles.amountRight}>
-                  <Text style={styles.amountLabel}>월 예산</Text>
-                  <Text style={styles.amountValue}>
-                    {formatWon(category.budget_limit)}
-                  </Text>
-                </View>
-              </View>
-
-              <AnimatedProgressBar
-                progress={category.budget_pressure}
-                tone={itemPressureTone}
-              />
-
-              {isSelected ? (
-                <View style={styles.selectedCategoryNote}>
-                  <Sparkles
-                    size={14}
-                    color={colors.butterDeep}
-                    strokeWidth={2.8}
-                  />
-                  <Text style={styles.selectedCategoryText}>
-                    오늘의 미션으로 추천된 항목입니다.
-                  </Text>
-                </View>
-              ) : null}
-            </GlassCard>
-          );
-        })}
-
-        <GlassCard delay={760} tone="butter" style={styles.missionCard}>
-          <View style={styles.missionTopRow}>
-            <View style={styles.missionIconBubble}>
-              <MissionIcon
-                size={25}
-                color={colors.text}
-                strokeWidth={2.8}
-              />
-            </View>
-
-            <View style={styles.missionTitleBox}>
-              <Text style={styles.cardLabel}>추천 미션</Text>
-              <Text style={styles.missionTitle}>
-                {mission.category_name} 소비 줄이기
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.challengeToneBadge,
-                {
-                  backgroundColor: missionTone.backgroundColor,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.challengeToneText,
-                  {
-                    color: missionTone.color,
-                  },
-                ]}
-              >
-                +{mission.xp_reward} XP
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.recommendText}>{mission.challenge_text}</Text>
-
-          <Text style={styles.missionDescription}>
-            예산을 지키는 데 가장 도움이 될 항목이라 오늘의 미션으로 추천되었습니다.
-          </Text>
-
-          <AnimatedButton
-            title="미션 확인하기"
-            onPress={() => router.push('/(tabs)/challenge')}
-            style={styles.missionButton}
-          />
-        </GlassCard>
+                <AnimatedProgressBar
+                  progress={category.budget_pressure}
+                  tone={itemPressureTone}
+                />
+              </GlassCard>
+            );
+          })
+        )}
       </ScrollView>
     </LinearGradient>
   );
@@ -554,7 +469,7 @@ const styles = StyleSheet.create({
     width: 230,
     height: 230,
     borderRadius: 999,
-    backgroundColor: 'rgba(242, 201, 76, 0.30)',
+    backgroundColor: 'rgba(242, 201, 76, 0.28)',
   },
   backgroundOrbSmall: {
     position: 'absolute',
@@ -563,7 +478,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.58)',
   },
   backgroundOrbTiny: {
     position: 'absolute',
@@ -572,120 +487,32 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 240, 184, 0.46)',
+    backgroundColor: 'rgba(255, 240, 184, 0.38)',
   },
   container: {
     padding: 20,
     paddingBottom: 128,
   },
-  header: {
-    marginBottom: 22,
+  summaryCard: {
+    backgroundColor: 'rgba(255,248,216,0.42)',
   },
-  headerLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.butterDeep,
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  title: {
-    fontFamily: typography.fontFamily,
-    fontSize: 30,
-    lineHeight: 38,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.7,
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.subText,
+  summaryTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 14,
+    alignItems: 'flex-start',
+    marginBottom: 18,
   },
   cardLabel: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
     fontWeight: '800',
     color: colors.subText,
-    marginBottom: 7,
+    marginBottom: 6,
   },
-  summaryCard: {
-    backgroundColor: colors.butterCard,
-  },
-  summaryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
-    marginBottom: 16,
-  },
-  summaryIconBubble: {
-    width: 54,
-    height: 54,
-    borderRadius: 22,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
-  },
-  summaryTitleBox: {
-    flex: 1,
-  },
-  summaryTitle: {
+  summaryValue: {
     fontFamily: typography.fontFamily,
-    fontSize: 21,
-    lineHeight: 28,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.4,
-  },
-  summaryText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.text,
-  },
-  summaryChipRow: {
-    marginTop: 16,
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  summaryChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  summaryChipText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  heroCard: {
-    backgroundColor: colors.whiteCard,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    alignItems: 'flex-start',
-    marginBottom: 22,
-  },
-  heroValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 34,
+    fontSize: 33,
     fontWeight: '900',
     color: colors.text,
     letterSpacing: -0.8,
@@ -700,7 +527,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
-  progressRow: {
+  progressInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
@@ -719,86 +546,42 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
-  heroDescription: {
+  summaryMessage: {
     marginTop: 12,
     fontFamily: typography.fontFamily,
     fontSize: 14,
     lineHeight: 21,
     color: colors.subText,
   },
-  heroChipRow: {
-    marginTop: 16,
-    flexDirection: 'row',
+  metricList: {
+    marginTop: 15,
     gap: 8,
-    flexWrap: 'wrap',
   },
-  heroChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
+  metricItem: {
+    minHeight: 54,
+    borderRadius: 18,
+    paddingHorizontal: 13,
+    backgroundColor: 'rgba(255,247,214,0.22)',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: 'rgba(255,255,255,0.28)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 8,
   },
-  heroChipText: {
+  metricLabel: {
+    flex: 1,
     fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
+    fontSize: 13,
+    color: colors.subText,
   },
-  heroSubDescription: {
-    marginTop: 14,
+  metricValue: {
     fontFamily: typography.fontFamily,
     fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-  },
-  boldText: {
     fontWeight: '900',
     color: colors.text,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  gridCard: {
-    flex: 1,
-    minHeight: 152,
-  },
-  gridIconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 17,
-    backgroundColor: colors.butterPale,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  gridLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 7,
-  },
-  gridValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 19,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 5,
-  },
-  gridDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.subText,
   },
   chartCard: {
-    backgroundColor: colors.whiteCard,
+    backgroundColor: 'rgba(255,255,255,0.36)',
   },
   sectionTitleRow: {
     flexDirection: 'row',
@@ -818,17 +601,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: colors.subText,
-    marginBottom: 18,
+    marginBottom: 16,
+  },
+  chartSummaryRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
+  },
+  chartSummaryItem: {
+    flex: 1,
+  },
+  chartSummaryLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.subText,
+    marginBottom: 5,
+  },
+  chartSummaryValue: {
+    fontFamily: typography.fontFamily,
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
   },
   barChart: {
     height: 178,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.50)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: 14,
-    paddingTop: 16,
-    paddingBottom: 12,
+    borderRadius: 24,
+    paddingHorizontal: 10,
+    paddingTop: 14,
+    paddingBottom: 10,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 9,
@@ -842,7 +646,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 104,
     borderRadius: 999,
-    backgroundColor: 'rgba(232, 226, 208, 0.72)',
+    backgroundColor: 'rgba(232, 226, 208, 0.54)',
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
@@ -872,14 +676,30 @@ const styles = StyleSheet.create({
   peakBarLabel: {
     color: colors.text,
   },
+  inlineEmptyBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  inlineEmptyTitle: {
+    marginTop: 10,
+    marginBottom: 5,
+    fontFamily: typography.fontFamily,
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  inlineEmptyDescription: {
+    textAlign: 'center',
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.subText,
+  },
   chartNote: {
     marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(122,111,91,0.14)',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 7,
@@ -892,10 +712,29 @@ const styles = StyleSheet.create({
     color: colors.subText,
   },
   sectionHeader: {
-    marginTop: 10,
+    marginTop: 8,
     marginBottom: 12,
   },
   sectionSubtitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.subText,
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  emptyTitle: {
+    marginTop: 10,
+    marginBottom: 5,
+    fontFamily: typography.fontFamily,
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  emptyDescription: {
+    textAlign: 'center',
     fontFamily: typography.fontFamily,
     fontSize: 13,
     lineHeight: 19,
@@ -906,7 +745,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   categoryLeft: {
     flexDirection: 'row',
@@ -922,7 +761,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectedCategoryIconBubble: {
+  primaryCategoryIconBubble: {
     backgroundColor: colors.butterStrong,
   },
   categoryTextBox: {
@@ -931,21 +770,21 @@ const styles = StyleSheet.create({
   categoryTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
     marginBottom: 4,
   },
   categoryName: {
     fontFamily: typography.fontFamily,
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: '900',
     color: colors.text,
   },
-  categoryRank: {
+  primaryLabel: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.58)',
     overflow: 'hidden',
+    backgroundColor: colors.butterPale,
     fontFamily: typography.fontFamily,
     fontSize: 11,
     fontWeight: '900',
@@ -953,118 +792,31 @@ const styles = StyleSheet.create({
   },
   categoryMeta: {
     fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: colors.subText,
   },
-  pressureBadge: {
-    paddingHorizontal: 11,
+  categoryBadge: {
+    paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
   },
-  pressureBadgeText: {
-    textAlign: 'center',
+  categoryBadgeText: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
   },
   categoryAmountRow: {
-    padding: 15,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.56)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 14,
+    gap: 10,
+    marginBottom: 10,
+    flexWrap: 'wrap',
   },
-  amountLabel: {
+  categoryAmountText: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '800',
     color: colors.subText,
-    marginBottom: 5,
-  },
-  amountValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 17,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  amountRight: {
-    alignItems: 'flex-end',
-  },
-  selectedCategoryNote: {
-    marginTop: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 247, 214, 0.72)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  selectedCategoryText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterDeep,
-  },
-  missionCard: {
-    backgroundColor: colors.butterCard,
-  },
-  missionTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 13,
-    marginBottom: 16,
-  },
-  missionIconBubble: {
-    width: 54,
-    height: 54,
-    borderRadius: 22,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  missionTitleBox: {
-    flex: 1,
-  },
-  missionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  challengeToneBadge: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  challengeToneText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  recommendText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 22,
-    lineHeight: 30,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.5,
-    marginBottom: 12,
-  },
-  missionDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-  },
-  missionButton: {
-    marginTop: 18,
   },
 });
