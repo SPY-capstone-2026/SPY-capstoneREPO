@@ -58,20 +58,7 @@
 
 ## 시스템 아키텍처
 
-```text
-┌─────────────────┐     HTTPS      ┌──────────────────────────┐
-│  Android 앱      │  ─────────▶  │   FastAPI (Railway 배포)  │
-│  (React Native)  │               │  ┌────────────────────┐  │
-│                  │  ◀─────────  │  │  Prophet AI 엔진   │  │
-│  챌린지 / 리포트  │   결과 반환   │  │(소비 예측 + 챌린지) │  │
-└─────────────────┘                │  └─────────┬──────────┘  │
-                                   │            │             │
-                                   │      ┌─────▼─────┐       │
-                                   │      │ PostgreSQL│       │
-                                   │      └───────────┘       │
-                                   └──────────────────────────┘
-```
-
+<img width="3200" height="1800" alt="Moni_아키텍처_흰배경" src="https://github.com/user-attachments/assets/7b4967b5-f6aa-4418-bd14-c7ae835de296" />
 요청 흐름: Android 앱 → API 요청 → Railway URL → FastAPI → Prophet 엔진 → DB → 결과 반환 → Android 앱
 
 ### 기술 스택
