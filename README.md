@@ -275,6 +275,7 @@ Android 및 외부 클라이언트 연동을 위한 상세 API 명세는 아래 
 
 ```text
 docs/api.md
+```
 
 ---
 
