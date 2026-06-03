@@ -24,7 +24,7 @@
 
 ### 1단계. 로그인
 
-1. 시연 주소(https://spy-capstone-repo.vercel.app)에 접속합니다.
+1. 시연 주소(https://spy-capstone-repo.vercel.app) 에 접속합니다.
 2. 아래 계정으로 로그인합니다.
 
    ```text
