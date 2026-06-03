@@ -178,6 +178,7 @@ SPY-capstoneREPO/
 ├─ README.md
 ├─ Procfile                      # 배포 설정
 ├─ .gitignore
+├─ self_demo.md
 │
 ├─ api/                          # 백엔드 (FastAPI)
 │  ├─ main.py                    # API 진입점
