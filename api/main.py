@@ -1,7 +1,6 @@
 import sys
 import os
 
-from requests import session
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai'))
 
 from fastapi import FastAPI, HTTPException, Depends
