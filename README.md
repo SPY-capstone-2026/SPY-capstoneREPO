@@ -2,6 +2,9 @@
 
 > 사용자의 과거 소비 패턴을 분석해 미래 지출을 예측하고, 그 결과를 바탕으로 **오늘 바로 실천할 수 있는 개인화 지출 제한형 챌린지**를 생성하는 소비 습관 코칭 앱
 
+🔗 **MVP 웹 배포:** https://spy-capstone-repo.vercel.app
+📖 **self demo 가이드:** [self_demo.md](./self_demo.md)
+
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)
 ![React Native](https://img.shields.io/badge/React%20Native-Expo-000020?logo=expo&logoColor=white)
