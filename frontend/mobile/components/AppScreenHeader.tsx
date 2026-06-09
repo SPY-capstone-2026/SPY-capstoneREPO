@@ -1,7 +1,5 @@
-import { ReactNode } from 'react';
-import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { LucideIcon, Sparkles } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -11,47 +9,31 @@ type AppScreenHeaderProps = {
   title: string;
   description?: string;
   Icon?: LucideIcon;
-  rightSlot?: ReactNode;
-  style?: StyleProp<ViewStyle>;
 };
 
 export function AppScreenHeader({
   label,
   title,
   description,
-  Icon = Sparkles,
-  rightSlot,
-  style,
+  Icon,
 }: AppScreenHeaderProps) {
   return (
-    <View style={[styles.container, style]}>
-      <LinearGradient
-        colors={[
-          'rgba(255, 248, 216, 0.64)',
-          'rgba(255, 255, 255, 0.46)',
-          'rgba(255, 244, 199, 0.42)',
-        ]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.card}
-      >
-        <View style={styles.softLight} />
-
-        <View style={styles.topRow}>
-          <View style={styles.labelRow}>
-            <Icon size={15} color={colors.butterBrown} strokeWidth={2.8} />
-            <Text style={styles.label}>{label}</Text>
+    <View style={styles.container}>
+      <View style={styles.labelRow}>
+        {Icon ? (
+          <View style={styles.iconBox}>
+            <Icon size={17} color={colors.butterBrown} strokeWidth={2.6} />
           </View>
-
-          {rightSlot ? <View>{rightSlot}</View> : null}
-        </View>
-
-        <Text style={styles.title}>{title}</Text>
-
-        {description ? (
-          <Text style={styles.description}>{description}</Text>
         ) : null}
-      </LinearGradient>
+
+        <Text style={styles.label}>{label}</Text>
+      </View>
+
+      <Text style={styles.title}>{title}</Text>
+
+      {description ? (
+        <Text style={styles.description}>{description}</Text>
+      ) : null}
     </View>
   );
 }
@@ -59,69 +41,42 @@ export function AppScreenHeader({
 const styles = StyleSheet.create({
   container: {
     marginBottom: 18,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.09,
-    shadowRadius: 20,
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    elevation: 4,
-  },
-  card: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: 30,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
-    minHeight: 144,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.48)',
-  },
-  softLight: {
-    position: 'absolute',
-    top: 10,
-    left: 18,
-    width: 92,
-    height: 18,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.20)',
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 15,
+    paddingTop: 4,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'transparent',
+    gap: 8,
+    marginBottom: 8,
+  },
+  iconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.butterPale,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
     color: colors.butterBrown,
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
   },
   title: {
-    maxWidth: 320,
     fontFamily: typography.fontFamily,
-    fontSize: 29,
-    lineHeight: 37,
+    fontSize: 26,
+    lineHeight: 34,
     fontWeight: '900',
     color: colors.text,
-    letterSpacing: -0.9,
-    marginBottom: 9,
+    letterSpacing: -0.7,
   },
   description: {
-    maxWidth: 330,
+    marginTop: 8,
     fontFamily: typography.fontFamily,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 21,
     color: colors.subText,
   },
 });

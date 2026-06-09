@@ -1,101 +1,77 @@
-import { PropsWithChildren, useRef } from 'react';
-import {
-  Animated,
-  Pressable,
-  StyleProp,
-  StyleSheet,
-  Text,
-  ViewStyle,
-} from 'react-native';
-import * as Haptics from 'expo-haptics';
+import type { ReactNode } from 'react';
+import { useRef } from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text } from 'react-native';
 
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 
-type AnimatedButtonProps = PropsWithChildren<{
+type AnimatedButtonProps = {
   title: string;
-  onPress?: () => void;
-  variant?: 'primary' | 'secondary' | 'soft' | 'ghost';
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'ghost';
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
-}>;
+  children?: ReactNode;
+};
 
 export function AnimatedButton({
   title,
   onPress,
   variant = 'primary',
+  disabled = false,
   style,
 }: AnimatedButtonProps) {
   const scale = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
 
   const pressIn = () => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 0.975,
-        damping: 16,
-        stiffness: 260,
-        mass: 0.45,
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateY, {
-        toValue: 1,
-        damping: 16,
-        stiffness: 260,
-        mass: 0.45,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    if (disabled) return;
+
+    Animated.spring(scale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 26,
+      bounciness: 2,
+    }).start();
   };
 
   const pressOut = () => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 1,
-        damping: 16,
-        stiffness: 230,
-        mass: 0.5,
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateY, {
-        toValue: 0,
-        damping: 16,
-        stiffness: 230,
-        mass: 0.5,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+    if (disabled) return;
 
-  const handlePress = async () => {
-    await Haptics.selectionAsync();
-    onPress?.();
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 22,
+      bounciness: 5,
+    }).start();
   };
-
-  const buttonStyle =
-    variant === 'primary'
-      ? styles.primaryButton
-      : variant === 'soft'
-        ? styles.softButton
-        : variant === 'ghost'
-          ? styles.ghostButton
-          : styles.secondaryButton;
 
   return (
-    <Animated.View
-      style={[
-        style,
-        {
-          transform: [{ translateY }, { scale }],
-        },
-      ]}
-    >
+    <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
-        onPress={handlePress}
+        onPress={onPress}
         onPressIn={pressIn}
         onPressOut={pressOut}
-        style={[styles.button, buttonStyle]}
+        disabled={disabled}
+        style={[
+          styles.button,
+          variant === 'primary' && styles.primary,
+          variant === 'secondary' && styles.secondary,
+          variant === 'ghost' && styles.ghost,
+          disabled && styles.disabled,
+          style,
+        ]}
       >
-        <Text style={styles.buttonText}>{title}</Text>
+        <Text
+          style={[
+            styles.text,
+            variant === 'primary' && styles.primaryText,
+            variant === 'secondary' && styles.secondaryText,
+            variant === 'ghost' && styles.ghostText,
+          ]}
+        >
+          {title}
+        </Text>
       </Pressable>
     </Animated.View>
   );
@@ -103,39 +79,38 @@ export function AnimatedButton({
 
 const styles = StyleSheet.create({
   button: {
-    height: 56,
-    borderRadius: 22,
+    minHeight: 50,
+    borderRadius: 14,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButton: {
+  primary: {
     backgroundColor: colors.butterStrong,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.15,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
   },
-  secondaryButton: {
-    backgroundColor: colors.butterPale,
+  secondary: {
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(242, 201, 76, 0.36)',
+    borderColor: colors.border,
   },
-  softButton: {
-    backgroundColor: colors.butterSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(242, 201, 76, 0.30)',
+  ghost: {
+    backgroundColor: 'transparent',
   },
-  ghostButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.62)',
-    borderWidth: 1,
-    borderColor: colors.gray200,
+  disabled: {
+    opacity: 0.5,
   },
-  buttonText: {
+  text: {
     fontFamily: typography.fontFamily,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
-    letterSpacing: -0.2,
+  },
+  primaryText: {
     color: colors.text,
+  },
+  secondaryText: {
+    color: colors.text,
+  },
+  ghostText: {
+    color: colors.subText,
   },
 });

@@ -1,43 +1,53 @@
-import { useCallback, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 
 import { colors } from '@/constants/colors';
 
+type ProgressTone =
+  | 'success'
+  | 'safe'
+  | 'warning'
+  | 'danger'
+  | 'neutral';
+
 type AnimatedProgressBarProps = {
   progress: number;
-  tone?: 'success' | 'warning' | 'danger';
+  tone?: ProgressTone;
 };
+
+function getFillColor(tone?: ProgressTone) {
+  if (tone === 'danger') {
+    return colors.dangerText;
+  }
+
+  if (tone === 'warning') {
+    return colors.warningText;
+  }
+
+  if (tone === 'success' || tone === 'safe') {
+    return colors.successText;
+  }
+
+  return colors.butterBrown;
+}
 
 export function AnimatedProgressBar({
   progress,
-  tone = 'success',
+  tone = 'neutral',
 }: AnimatedProgressBarProps) {
-  const width = useRef(new Animated.Value(0)).current;
-  const safeProgress = Math.max(0, Math.min(progress, 1));
+  const animatedProgress = useRef(new Animated.Value(0)).current;
+  const safeProgress = Math.min(Math.max(progress, 0), 1.6);
 
-  useFocusEffect(
-    useCallback(() => {
-      width.setValue(0);
+  useEffect(() => {
+    Animated.timing(animatedProgress, {
+      toValue: safeProgress,
+      duration: 520,
+      useNativeDriver: false,
+    }).start();
+  }, [animatedProgress, safeProgress]);
 
-      Animated.timing(width, {
-        toValue: safeProgress,
-        duration: 760,
-        delay: 120,
-        useNativeDriver: false,
-      }).start();
-    }, [safeProgress, width])
-  );
-
-  const barColor =
-    tone === 'danger'
-      ? colors.dangerText
-      : tone === 'warning'
-        ? colors.butterStrong
-        : colors.successText;
-
-  const animatedWidth = width.interpolate({
-    inputRange: [0, 1],
+  const width = animatedProgress.interpolate({
+    inputRange: [0, 1.6],
     outputRange: ['0%', '100%'],
   });
 
@@ -47,8 +57,8 @@ export function AnimatedProgressBar({
         style={[
           styles.fill,
           {
-            width: animatedWidth,
-            backgroundColor: barColor,
+            width,
+            backgroundColor: getFillColor(tone),
           },
         ]}
       />
@@ -58,9 +68,10 @@ export function AnimatedProgressBar({
 
 const styles = StyleSheet.create({
   track: {
-    height: 10,
+    width: '100%',
+    height: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(232, 226, 208, 0.72)',
+    backgroundColor: colors.gray200,
     overflow: 'hidden',
   },
   fill: {
