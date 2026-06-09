@@ -1,46 +1,52 @@
 export const colors = {
-  background: '#FFF8E7',
-  backgroundSoft: '#FFFBF1',
+  background: '#F8FAFC',
   backgroundWhite: '#FFFFFF',
 
-  text: '#2B2418',
-  subText: '#7A6F5B',
-  mutedText: '#A29885',
+  surface: '#FFFFFF',
+  surfaceMuted: '#F1F5F9',
+  surfaceSoft: '#F8FAFC',
 
-  butterPale: '#FFF3C4',
-  butterSoft: '#FFE89A',
-  butterStrong: '#F6D45A',
-  butterDeep: '#D7A900',
-  butterBrown: '#8A6500',
+  text: '#111827',
+  subText: '#4B5563',
+  mutedText: '#9CA3AF',
 
-  creamCard: 'rgba(255, 251, 240, 0.72)',
-  whiteCard: 'rgba(255, 255, 255, 0.62)',
-  butterCard: 'rgba(255, 248, 216, 0.62)',
-  glassBorder: 'rgba(255, 255, 255, 0.78)',
+  border: '#E5E7EB',
+  borderSoft: '#EEF2F7',
 
-  /**
-   * 기존 컴포넌트 호환용 alias
-   * MotionCard.tsx 등 예전 코드가 아직 이 이름을 사용할 수 있어서 유지합니다.
-   */
-  glassWhite: 'rgba(255, 255, 255, 0.62)',
-  glassButter: 'rgba(255, 248, 216, 0.62)',
-  glassCream: 'rgba(255, 251, 240, 0.72)',
+  butterPale: '#FFF7D6',
+  butterSoft: '#F6D365',
+  butterStrong: '#F4C430',
+  butterDeep: '#B7791F',
+  butterBrown: '#8A5A12',
 
-  gray100: '#F6F2E8',
-  gray200: '#E8E1D3',
-  gray300: '#D8CFBD',
+  successBg: '#ECFDF3',
+  successText: '#027A48',
 
-  successBg: '#EAF7DE',
-  successText: '#527B32',
+  warningBg: '#FFFAEB',
+  warningText: '#B54708',
 
-  warningBg: '#FFF0C2',
-  warningText: '#B57900',
+  dangerBg: '#FEF3F2',
+  dangerText: '#B42318',
 
-  dangerBg: '#FFE5D8',
-  dangerText: '#B85A35',
+  infoBg: '#EFF6FF',
+  infoText: '#2563EB',
 
-  coralSoft: '#FFE9DE',
-  coralText: '#B85A35',
+  glassBorder: '#E5E7EB',
 
-  shadow: '#B88B00',
+  // 기존 컴포넌트 호환용 토큰
+  shadow: '#111827',
+  glassWhite: '#FFFFFF',
+  glassSoft: '#F8FAFC',
+  glassYellow: '#FFF7D6',
+
+  gray50: '#F9FAFB',
+  gray100: '#F3F4F6',
+  gray200: '#E5E7EB',
+  gray300: '#D1D5DB',
+  gray400: '#9CA3AF',
+  gray500: '#6B7280',
+  gray600: '#4B5563',
+  gray700: '#374151',
+  gray800: '#1F2937',
+  gray900: '#111827',
 };

@@ -1,98 +1,86 @@
-import { PropsWithChildren, useCallback, useRef } from 'react';
-import {
-  Animated,
-  StyleProp,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
+import { Animated, Easing, StyleSheet } from 'react-native';
 
 import { colors } from '@/constants/colors';
 
-type GlassCardProps = PropsWithChildren<{
+type GlassCardProps = {
+  children: ReactNode;
   delay?: number;
-  tone?: 'butter' | 'soft' | 'white';
+  tone?: 'default' | 'soft' | 'butter';
   style?: StyleProp<ViewStyle>;
-}>;
+};
 
 export function GlassCard({
   children,
   delay = 0,
-  tone = 'white',
+  tone = 'default',
   style,
 }: GlassCardProps) {
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(12)).current;
+  const translateY = useRef(new Animated.Value(14)).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      opacity.setValue(0);
-      translateY.setValue(12);
-
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 360,
-          delay,
-          useNativeDriver: true,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          damping: 19,
-          stiffness: 210,
-          mass: 0.55,
-          delay,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, [delay, opacity, translateY])
-  );
-
-  const toneStyle =
-    tone === 'butter'
-      ? styles.butter
-      : tone === 'soft'
-        ? styles.soft
-        : styles.white;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 420,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 420,
+        delay,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [delay, opacity, translateY]);
 
   return (
     <Animated.View
       style={[
-        styles.shadowWrap,
+        styles.card,
+        tone === 'soft' && styles.softCard,
+        tone === 'butter' && styles.butterCard,
         {
           opacity,
           transform: [{ translateY }],
         },
+        style,
       ]}
     >
-      <View style={[styles.card, toneStyle, style]}>{children}</View>
+      {children}
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  shadowWrap: {
-    marginBottom: 14,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
-  },
   card: {
-    borderRadius: 28,
+    width: '100%',
+    borderRadius: 20,
     padding: 18,
+    marginBottom: 14,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.46)',
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
   },
-  white: {
-    backgroundColor: 'rgba(255,255,255,0.42)',
+  softCard: {
+    backgroundColor: colors.surfaceSoft,
   },
-  butter: {
-    backgroundColor: 'rgba(255,248,216,0.46)',
-  },
-  soft: {
-    backgroundColor: 'rgba(255,251,240,0.42)',
+  butterCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
   },
 });

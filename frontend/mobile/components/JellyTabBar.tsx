@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { LucideIcon } from 'lucide-react-native';
 import {
   BarChart3,
   ClipboardCheck,
   Home,
-  LucideIcon,
   ReceiptText,
   UserRound,
 } from 'lucide-react-native';
@@ -53,7 +53,7 @@ const TAB_META: Record<string, TabMeta> = {
 const TAB_ORDER = ['home', 'challenge', 'report', 'transactions', 'mypage'];
 
 const BAR_SIDE_PADDING = 6;
-const JELLY_SIDE_GAP = 3;
+const INDICATOR_SIDE_GAP = 5;
 
 export function JellyTabBar({
   state,
@@ -64,8 +64,6 @@ export function JellyTabBar({
   const [innerWidth, setInnerWidth] = useState(0);
 
   const translateX = useRef(new Animated.Value(0)).current;
-  const scaleX = useRef(new Animated.Value(1)).current;
-  const scaleY = useRef(new Animated.Value(1)).current;
 
   const visibleRoutes = useMemo(() => {
     return [...state.routes]
@@ -87,62 +85,28 @@ export function JellyTabBar({
       ? usableWidth / visibleRoutes.length
       : 0;
 
-  const jellyWidth = Math.max(tabWidth - JELLY_SIDE_GAP * 2, 0);
+  const indicatorWidth = Math.max(tabWidth - INDICATOR_SIDE_GAP * 2, 0);
 
   useEffect(() => {
-    if (!tabWidth || !jellyWidth) return;
+    if (!tabWidth || !indicatorWidth) return;
 
     const targetX =
       BAR_SIDE_PADDING +
       selectedVisibleIndex * tabWidth +
-      (tabWidth - jellyWidth) / 2;
+      (tabWidth - indicatorWidth) / 2;
 
-    Animated.parallel([
-      Animated.spring(translateX, {
-        toValue: targetX,
-        damping: 17,
-        stiffness: 360,
-        mass: 0.42,
-        useNativeDriver: true,
-      }),
-
-      Animated.sequence([
-        Animated.parallel([
-          Animated.spring(scaleX, {
-            toValue: 1.22,
-            damping: 11,
-            stiffness: 430,
-            mass: 0.34,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scaleY, {
-            toValue: 0.90,
-            damping: 11,
-            stiffness: 430,
-            mass: 0.34,
-            useNativeDriver: true,
-          }),
-        ]),
-
-        Animated.parallel([
-          Animated.spring(scaleX, {
-            toValue: 1,
-            damping: 20,
-            stiffness: 720,
-            mass: 0.24,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scaleY, {
-            toValue: 1,
-            damping: 20,
-            stiffness: 720,
-            mass: 0.24,
-            useNativeDriver: true,
-          }),
-        ]),
-      ]),
-    ]).start();
-  }, [jellyWidth, scaleX, scaleY, selectedVisibleIndex, tabWidth, translateX]);
+    Animated.timing(translateX, {
+      toValue: targetX,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [
+    indicatorWidth,
+    selectedVisibleIndex,
+    tabWidth,
+    translateX,
+  ]);
 
   return (
     <View
@@ -163,27 +127,13 @@ export function JellyTabBar({
             <Animated.View
               pointerEvents="none"
               style={[
-                styles.jelly,
+                styles.indicator,
                 {
-                  width: jellyWidth,
-                  transform: [
-                    { translateX },
-                    { scaleX },
-                    { scaleY },
-                  ],
+                  width: indicatorWidth,
+                  transform: [{ translateX }],
                 },
               ]}
-            >
-              <LinearGradient
-                colors={['#FFEFA6', '#F6D45A', '#E9BE32']}
-                start={{ x: 0.1, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.jellyFill}
-              >
-                <View style={styles.jellyLight} />
-                <View style={styles.jellyGlow} />
-              </LinearGradient>
-            </Animated.View>
+            />
           ) : null}
 
           {visibleRoutes.map((route) => {
@@ -205,7 +155,12 @@ export function JellyTabBar({
               });
 
               if (!isFocused && !event.defaultPrevented) {
-                await Haptics.selectionAsync();
+                try {
+                  await Haptics.selectionAsync();
+                } catch {
+                  // Web 환경에서는 haptic이 동작하지 않을 수 있습니다.
+                }
+
                 navigation.navigate(route.name, route.params);
               }
             };
@@ -230,7 +185,7 @@ export function JellyTabBar({
               >
                 <Icon
                   size={21}
-                  strokeWidth={isFocused ? 3 : 2.5}
+                  strokeWidth={isFocused ? 3 : 2.4}
                   color={isFocused ? colors.text : colors.mutedText}
                 />
 
@@ -261,64 +216,49 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   shell: {
-    borderRadius: 30,
+    borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.52)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.56)',
+    borderColor: colors.border,
     shadowColor: colors.shadow,
-    shadowOpacity: 0.13,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 4,
   },
   inner: {
-    minHeight: 70,
+    minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
     paddingHorizontal: BAR_SIDE_PADDING,
     paddingVertical: 6,
   },
-  jelly: {
+  indicator: {
     position: 'absolute',
-    top: 6,
-    bottom: 6,
+    top: 7,
+    bottom: 7,
     left: 0,
-    borderRadius: 25,
-    overflow: 'hidden',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  jellyFill: {
-    flex: 1,
-    borderRadius: 25,
-    overflow: 'hidden',
-  },
-  jellyLight: {
-    position: 'absolute',
-    top: 8,
-    left: 13,
-    width: 34,
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.34)',
-  },
-  jellyGlow: {
-    position: 'absolute',
-    right: -12,
-    bottom: -16,
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 19,
+    backgroundColor: colors.butterStrong,
+    borderWidth: 1,
+    borderColor: colors.butterSoft,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    elevation: 0,
   },
   tabButton: {
     flex: 1,
-    minHeight: 58,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
