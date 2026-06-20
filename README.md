@@ -8,6 +8,33 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-DB-4169E1?logo=postgresql&logoColor=white)
 ![Prophet](https://img.shields.io/badge/Forecast-Prophet-2D6CDF)
 
+
+---
+
+## 빠르게 확인하기
+
+| 항목 | 링크 |
+|---|---|
+| MVP 웹 데모 | 배포 URL |
+| Self demo 가이드 | `self_demo.md` |
+| API 문서 | `docs/api.md` |
+| 프론트엔드 문서 | `frontend/mobile/README.md` |
+
+### 시연용 계정
+
+```text
+이메일: demo@moni.app
+비밀번호: moni1234!
+```
+
+### 핵심 흐름
+
+소비 기록 입력
+→ 월말 예상 지출 계산
+→ 예산 압박도 분석
+→ 오늘의 지출 제한형 챌린지 생성
+→ 챌린지 완료 시 XP / 레벨 반영
+
 ---
 
 ## 프로젝트 소개
@@ -133,7 +160,18 @@ MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다. AI 엔진은 4
 
 ## 현재 구현 현황
 
-## 현재 구현 현황
+### 구현 위치 요약
+
+| 기능 | 설명 | 주요 코드 위치 |
+|---|---|---|
+| 인증 | 회원가입, 로그인, JWT 인증 | `api/auth.py`, `api/main.py`, `frontend/mobile/app/auth/` |
+| 사용자 정보 | 내 정보 조회 및 수정 | `api/main.py`, `frontend/mobile/app/(tabs)/mypage.tsx` |
+| 지출 기록 | 지출 추가, 수정, 삭제, 날짜 지정 | `api/main.py`, `frontend/mobile/app/(tabs)/transactions.tsx`, `frontend/mobile/services/transactionService.ts` |
+| 예산 관리 | 카테고리별 예산, 알림 기준, 미션 포함 여부 | `api/main.py`, `frontend/mobile/services/categoryService.ts` |
+| 월간 리포트 | 현재 지출, 예상 지출, 예산 압박도, 요일별 흐름 | `api/main.py`, `frontend/mobile/app/(tabs)/report.tsx`, `frontend/mobile/services/reportService.ts` |
+| 챌린지 | 오늘의 챌린지 조회, 생성, 완료/취소 | `api/main.py`, `api/ai/moni_engine/`, `frontend/mobile/app/(tabs)/challenge.tsx` |
+| AI 엔진 | 전처리, 예측, 챌린지 생성 | `api/ai/moni_engine/preprocessing.py`, `prediction.py`, `challenge.py`, `engine.py` |
+| 공통 UI | 카드, 헤더, 탭바, 진행바 | `frontend/mobile/components/` |
 
 ### ✅ 완료
 
@@ -154,18 +192,20 @@ MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다. AI 엔진은 4
 
 * 프론트엔드는 Expo Web 기준으로 개발 및 확인합니다.
 * `POST /challenges/generate` 호출 결과 `ai_metadata` 포함 응답을 확인했습니다.
-* 현재 테스트에서는 `model_version: fallback-v1`이 확인되었습니다. 이는 소비 데이터가 부족하거나 AI 추천 결과가 비어 있을 때 기본 챌린지를 생성하는 fallback 흐름입니다.
+* 챌린지 생성 API는 AI 추천 결과 또는 fallback 결과를 반환합니다.
+* fallback 흐름은 소비 데이터가 부족한 초기 사용자에게도 기본 챌린지를 제공하기 위한 안전 장치입니다.
 * 주요 기능은 로컬 백엔드와 프론트 웹 환경에서 통합 테스트 중입니다.
 
-### 📋 예정
+### 📋 향후 개선
 
+* AI 추천 데이터 조건 고도화
 * AI 추천 결과가 충분히 나오는 데이터 조건 점검
 * 리포트 내 AI 인사이트 문구 확장
 * 챌린지 텍스트 다양화
 * 날짜 선택 UI 개선
 * 캐릭터 성장 UI 고도화
 * 주간 리포트 및 챌린지 달성률 분석 확장
-
+* 배포 환경 보안 설정 정리
 
 ---
 
@@ -211,28 +251,27 @@ SPY-capstoneREPO/
    ├─ Team_Ground_Rule.md
    └─ elevator_speech.md
    └─ api.md                     # Android/API 연동 문서
+   └─ architecture.md
 ```
+
+### 주요 폴더 설명
+
+| 경로 | 설명 |
+|---|---|
+| `api/` | FastAPI 기반 백엔드 서버 |
+| `api/ai/` | 소비 예측 및 챌린지 생성 AI 엔진 |
+| `frontend/mobile/` | React Native Expo 앱 |
+| `frontend/mobile/app/` | Expo Router 기반 화면 |
+| `frontend/mobile/components/` | 재사용 UI 컴포넌트 |
+| `frontend/mobile/services/` | API 요청 함수 |
+| `docs/` | API, 아키텍처, 기획 문서 |
+| `self_demo.md` | 시연 흐름 문서 |
 
 ---
 
 ## 실행 방법
 
-### 1. AI 엔진 단독 실행 / 테스트
-
-```bash
-cd api/ai
-pip install -r requirements.txt
-python tests/test_engine.py        # 통합 테스트 8종
-```
-
-전체 파이프라인을 한 번에 보고 싶다면 `api/ai/moni_pipeline.ipynb`를 Colab/Jupyter에서 열고 상단 설정 셀의 `PROFILE`과 `SEED`를 지정한 뒤 전체 셀을 실행합니다.
-
-```python
-PROFILE = "balanced"   # "careful" / "balanced" / "overspend" / "custom"
-SEED = None            # None: 매번 다른 결과 / 정수: 재현 가능
-```
-
-### 2. 백엔드 실행
+### 1. 백엔드 실행
 
 ```bash
 cd api
@@ -243,7 +282,7 @@ uvicorn main:app --reload          # http://localhost:8000
 
 API 문서는 실행 후 `http://localhost:8000/docs`에서 확인할 수 있습니다.
 
-### 3. 프론트엔드 (모바일 앱) 실행
+### 2. 프론트엔드 (모바일 앱) 실행
 
 ```bash
 cd frontend/mobile
@@ -267,14 +306,70 @@ EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
 EXPO_PUBLIC_API_BASE_URL=https://spy-capstonerepo-production.up.railway.app
 ```
 
+### 3. AI 엔진 단독 실행 / 테스트
+
+```bash
+cd api/ai
+pip install -r requirements.txt
+python tests/test_engine.py        # 통합 테스트 8종
+```
+
+전체 파이프라인을 한 번에 보고 싶다면 `api/ai/moni_pipeline.ipynb`를 Colab/Jupyter에서 열고 상단 설정 셀의 `PROFILE`과 `SEED`를 지정한 뒤 전체 셀을 실행합니다.
+
+```python
+PROFILE = "balanced"   # "careful" / "balanced" / "overspend" / "custom"
+SEED = None            # None: 매번 다른 결과 / 정수: 재현 가능
+```
+
 ---
 
-## API 문서
+## 테스트 및 검증
 
-Android 및 외부 클라이언트 연동을 위한 상세 API 명세는 아래 문서에서 확인할 수 있습니다.
+### AI 엔진 테스트
 
-```text
-docs/api.md
+```bash
+cd api/ai
+python tests/test_engine.py
+```
+
+### 백엔드 문법 확인
+
+```bash
+cd api
+python -m py_compile main.py
+```
+
+### 프론트엔드 타입 체크
+
+```bash
+cd frontend/mobile
+npx tsc --noEmit
+```
+
+### 로컬 검증 시나리오
+
+1. 백엔드 서버를 실행합니다.
+2. 프론트엔드를 Expo Web으로 실행합니다.
+3. 로그인 또는 시연용 계정으로 접속합니다.
+4. 소비 탭에서 지출을 추가합니다.
+5. 리포트에서 월말 예상 지출과 예산 압박도를 확인합니다.
+6. 챌린지 탭에서 오늘의 챌린지를 생성합니다.
+7. 챌린지를 완료하고 마이페이지에서 XP / 레벨 반영을 확인합니다.
+
+---
+
+## 추가 문서
+
+## 추가 문서
+
+| 문서 | 설명 |
+|---|---|
+| `docs/api.md` | Android / 외부 클라이언트용 API 명세 |
+| `docs/architecture.md` | 전체 데이터 흐름 및 설계 판단 |
+| `docs/test-scenario.md` | 시연 및 통합 테스트 시나리오 |
+| `frontend/mobile/README.md` | 프론트엔드 실행, 구조, 테스트 방법 |
+| `api/ai/README.md` | AI 엔진 구조 및 백엔드 연동 명세 |
+| `self_demo.md` | 시연 흐름 문서 |
 
 ---
 
