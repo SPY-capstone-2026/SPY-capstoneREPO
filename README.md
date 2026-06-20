@@ -2,6 +2,9 @@
 
 > 사용자의 과거 소비 패턴을 분석해 미래 지출을 예측하고, 그 결과를 바탕으로 **오늘 바로 실천할 수 있는 개인화 지출 제한형 챌린지**를 생성하는 소비 습관 코칭 앱
 
+🔗 **MVP 웹 배포:** https://spy-capstone-repo.vercel.app
+📖 **self demo 가이드:** [self_demo.md](./self_demo.md)
+
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)
 ![React Native](https://img.shields.io/badge/React%20Native-Expo-000020?logo=expo&logoColor=white)
@@ -206,6 +209,8 @@ MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다. AI 엔진은 4
 * 캐릭터 성장 UI 고도화
 * 주간 리포트 및 챌린지 달성률 분석 확장
 * 배포 환경 보안 설정 정리
+* 소비 예측에 있어서 현 Prophet 모델과 LLM 비교 실험
+* 게이미피케이션 요소의 차지 비중 결정 및 확장
 
 ---
 
@@ -216,6 +221,7 @@ SPY-capstoneREPO/
 ├─ README.md
 ├─ Procfile                      # 배포 설정
 ├─ .gitignore
+├─ self_demo.md
 │
 ├─ api/                          # 백엔드 (FastAPI)
 │  ├─ main.py                    # API 진입점

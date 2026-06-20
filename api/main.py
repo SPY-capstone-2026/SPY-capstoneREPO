@@ -1,7 +1,6 @@
 import sys
 import os
 
-from requests import session
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ai'))
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -32,6 +31,7 @@ app.add_middleware(
         "http://127.0.0.1:8081",
         "http://localhost:19006",
         "http://127.0.0.1:19006",
+        "https://spy-capstone-repo.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
