@@ -18,7 +18,7 @@
 
 | 항목 | 링크 |
 |---|---|
-| MVP 웹 데모 | 배포 URL |
+| MVP 웹 데모 | https://spy-capstone-repo.vercel.app |
 | Self demo 가이드 | `self_demo.md` |
 | API 문서 | `docs/api.md` |
 | 프론트엔드 문서 | `frontend/mobile/README.md` |
@@ -202,7 +202,6 @@ MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다. AI 엔진은 4
 ### 📋 향후 개선
 
 * AI 추천 데이터 조건 고도화
-* AI 추천 결과가 충분히 나오는 데이터 조건 점검
 * 리포트 내 AI 인사이트 문구 확장
 * 챌린지 텍스트 다양화
 * 날짜 선택 UI 개선
@@ -255,9 +254,10 @@ SPY-capstoneREPO/
 └─ docs/                         # 기획 문서
    ├─ PMF.md
    ├─ Team_Ground_Rule.md
-   └─ elevator_speech.md
-   └─ api.md                     # Android/API 연동 문서
-   └─ architecture.md
+   ├─ elevator_speech.md
+   ├─ api.md
+   ├─ architecture.md
+   └─ test-scenario.md
 ```
 
 ### 주요 폴더 설명
@@ -363,8 +363,6 @@ npx tsc --noEmit
 7. 챌린지를 완료하고 마이페이지에서 XP / 레벨 반영을 확인합니다.
 
 ---
-
-## 추가 문서
 
 ## 추가 문서
 
