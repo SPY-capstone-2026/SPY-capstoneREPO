@@ -1,3 +1,9 @@
+/**
+ * 반투명 글래스모피즘 카드 컨테이너.
+ * 마운트 시 fade-in + slide-up 애니메이션이 적용된다.
+ * tone으로 배경 톤(default/soft/butter)을 조절한다.
+ */
+
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';

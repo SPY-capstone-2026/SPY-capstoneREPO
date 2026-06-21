@@ -1,3 +1,8 @@
+/**
+ * 눌렀을 때 살짝 줄어드는(scale 0.97) 스프링 애니메이션이 적용된 버튼.
+ * variant로 강조(primary) / 보조(secondary) / 투명(ghost) 스타일을 고른다.
+ */
+
 import type { ReactNode } from 'react';
 import { useRef } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
