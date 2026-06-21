@@ -1,3 +1,9 @@
+/**
+ * 탄성 애니메이션이 적용된 가로 스크롤 세그먼트 토글.
+ * items 배열을 가로로 나열하고, selectedIndex로 선택 상태를 표시한다.
+ * 소비 화면 기간 필터 등에 쓰인다.
+ */
+
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '@/constants/colors';

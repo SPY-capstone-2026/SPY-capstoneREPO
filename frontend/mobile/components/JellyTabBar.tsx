@@ -1,3 +1,9 @@
+/**
+ * 탄성 애니메이션이 적용된 커스텀 하단 탭바.
+ * React Navigation의 BottomTabBarProps를 받아 직접 그리며,
+ * 탭 전환 시 가벼운 햅틱 피드백을 함께 준다.
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,

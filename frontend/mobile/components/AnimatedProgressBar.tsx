@@ -1,3 +1,9 @@
+/**
+ * 예산 진행률을 보여주는 애니메이션 바.
+ * progress(0~1)에 비례해 채워지며, tone에 따라 채움 색이 바뀐다
+ * (danger=초과 위험, warning=주의, success/safe=안전, neutral=기본).
+ */
+
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 

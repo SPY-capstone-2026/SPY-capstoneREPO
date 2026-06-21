@@ -1,3 +1,9 @@
+/**
+ * 화면 하단에 잠깐 떴다가 사라지는 토스트 알림.
+ * visible이 true가 되면 fade-in + slide-up으로 나타나고, false가 되면
+ * 다시 사라진다. 챌린지 완료 등 액션 피드백에 사용된다.
+ */
+
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 import { CheckCircle2 } from 'lucide-react-native';

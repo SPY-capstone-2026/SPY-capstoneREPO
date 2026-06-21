@@ -1,3 +1,8 @@
+/**
+ * 화면 상단 타이틀 영역 (라벨 + 제목 + 설명 + 아이콘).
+ * 홈/소비/챌린지/리포트 등 각 탭 화면 맨 위에서 공통으로 쓰인다.
+ */
+
 import type { LucideIcon } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 

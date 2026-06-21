@@ -1,3 +1,8 @@
+/**
+ * 화면에 포커스될 때마다(다시 보일 때마다) fade-in + slide-up + scale-up
+ * 모션이 재생되는 카드. useFocusEffect로 탭 전환마다 애니메이션을 재시작한다.
+ */
+
 import { PropsWithChildren, useCallback, useRef } from 'react';
 import {
   Animated,

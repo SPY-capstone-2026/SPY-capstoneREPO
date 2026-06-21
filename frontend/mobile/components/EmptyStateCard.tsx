@@ -1,3 +1,8 @@
+/**
+ * EmptyState를 GlassCard 안에 넣은 카드형 버전.
+ * 리포트/소비 화면처럼 다른 카드들 사이에 "데이터 없음" 카드를 끼워 넣을 때 쓴다.
+ */
+
 import type { LucideIcon } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 

@@ -1,3 +1,8 @@
+/**
+ * 데이터가 전혀 없을 때 화면 전체에 보여주는 안내 UI (아이콘 + 제목 + 설명 + 액션 버튼).
+ * 카드 안에 넣어야 할 때는 EmptyStateCard를 쓴다.
+ */
+
 import { StyleSheet, Text, View } from 'react-native';
 import { LucideIcon, PencilLine } from 'lucide-react-native';
 

@@ -1,3 +1,9 @@
+/**
+ * 블러 처리된 반투명 상단 헤더.
+ * routeName(home/transactions/challenge/report/profile 등)에 따라
+ * getHeaderMeta()가 아이콘과 안내 문구를 자동으로 골라준다.
+ */
+
 import { StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

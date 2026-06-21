@@ -218,26 +218,31 @@ frontend/mobile/
 │  ├─ AnimatedButton.tsx
 │  ├─ AnimatedProgressBar.tsx
 │  ├─ AppScreenHeader.tsx
+│  ├─ AppToast.tsx
 │  ├─ EmptyState.tsx
+│  ├─ EmptyStateCard.tsx
 │  ├─ GlassCard.tsx
-│  └─ JellySegmentedControl.tsx
+│  ├─ GlassTopHeader.tsx
+│  ├─ JellySegmentedControl.tsx
+│  ├─ JellyTabBar.tsx
+│  ├─ MotionCard.tsx
+│  └─ (external-link / haptic-tab / hello-wave / parallax-scroll-view / themed-text / themed-view: Expo 템플릿 기본 제공)
 │
 ├─ constants/
-│  ├─ colors.ts
-│  ├─ typography.ts
-│  ├─ mockAiResult.ts
-│  └─ mockTypes.ts
+│  ├─ colors.ts / theme.ts / typography.ts / motion.ts
+│  └─ mockUser.ts / mockCategories.ts / mockChallenges.ts / mockTransactions.ts / mockAiResult.ts / mockTypes.ts
 │
 ├─ contexts/
-│  └─ ToastContext.tsx
+│  ├─ ToastContext.tsx
+│  └─ MissionContext.tsx
 │
 ├─ services/
-│  ├─ apiClient.ts
-│  ├─ authService.ts
-│  ├─ categoryService.ts
-│  ├─ challengeService.ts
-│  ├─ reportService.ts
-│  └─ transactionService.ts
+│  ├─ apiClient.ts / apiConfig.ts / tokenStorage.ts
+│  ├─ authApi.ts / authService.ts
+│  ├─ categoryApi.ts / categoryService.ts
+│  ├─ challengeApi.ts / challengeService.ts
+│  ├─ reportApi.ts / reportService.ts
+│  └─ transactionApi.ts / transactionService.ts
 │
 ├─ types/
 │  └─ api.ts
@@ -253,6 +258,32 @@ frontend/mobile/
 ```
 
 파일명은 실제 브랜치 상태에 따라 일부 다를 수 있습니다. 라우트와 서비스 구조를 확인할 때는 `app/`, `services/`, `types/`를 우선 확인합니다.
+
+## 공용 컴포넌트
+
+| 컴포넌트 | 역할 | 주요 사용처 |
+|---|---|---|
+| `GlassCard` | 글래스모피즘 카드 + 등장 애니메이션 | 홈, 리포트 카드 |
+| `MotionCard` | 화면 포커스 시 모션 반응 카드 | 챌린지 카드 |
+| `GlassTopHeader` | 블러 처리된 상단 헤더 | 전체 탭 화면 |
+| `JellyTabBar` | 하단 탭바 (탄성 애니메이션 + 햅틱) | 전체 레이아웃 |
+| `JellySegmentedControl` | 세그먼트 토글 (탄성 애니메이션) | 소비 필터, 기간 선택 |
+| `AnimatedButton` | 눌림 애니메이션 버튼 | 전체 화면 |
+| `AnimatedProgressBar` | 예산 진행률 바 | 홈, 소비, 리포트 |
+| `AppToast` | 전역 토스트 알림 | 챌린지 완료 등 액션 피드백 |
+| `AppScreenHeader` | 화면 상단 타이틀 영역 | 전체 탭 화면 |
+| `EmptyState` / `EmptyStateCard` | 데이터 없음 안내 UI (전체 화면형 / 카드형) | 소비·리포트 빈 상태 |
+
+위 10개는 Moni 자체 제작 컴포넌트입니다. 그 외 `external-link`, `haptic-tab`, `hello-wave`, `parallax-scroll-view`, `themed-text`, `themed-view`는 Expo 템플릿이 기본 제공하는 컴포넌트로, 직접 수정한 적이 없습니다.
+
+## API 레이어 구조
+
+서비스 폴더는 두 계층으로 나뉩니다.
+
+- `*Api.ts` — 백엔드 엔드포인트와 1:1 대응하는 raw HTTP 호출 (`apiClient` 사용)
+- `*Service.ts` — 화면에서 바로 쓰기 좋은 형태로 `*Api.ts`를 감싼 함수 (토큰 저장, 응답 가공 등 부가 로직 포함)
+
+예: `signupApi()`는 단순 POST 요청만 하고, `signupUser()`(in `authService.ts`)는 그 결과로 받은 토큰을 저장까지 처리합니다. 화면 컴포넌트는 항상 `*Service.ts`만 import해서 쓰면 됩니다.
 
 ---
 
