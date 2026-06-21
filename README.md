@@ -6,7 +6,7 @@
 📖 **self demo 가이드:** [self_demo.md](./self_demo.md)
 
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.136.1-009688?logo=fastapi&logoColor=white)
 ![React Native](https://img.shields.io/badge/React%20Native-Expo-000020?logo=expo&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-DB-4169E1?logo=postgresql&logoColor=white)
 ![Prophet](https://img.shields.io/badge/Forecast-Prophet-2D6CDF)
@@ -89,7 +89,7 @@
 ## 시스템 아키텍처
 
 <img width="3200" height="1800" alt="Moni_아키텍처_흰배경" src="https://github.com/user-attachments/assets/7b4967b5-f6aa-4418-bd14-c7ae835de296" />
-요청 흐름: Android 앱 → API 요청 → Railway URL → FastAPI → Prophet 엔진 → DB → 결과 반환 → Android 앱
+요청 흐름: React Native(Expo) 클라이언트 → API 요청 → Railway URL → FastAPI → Prophet 엔진 → DB → 결과 반환 → 클라이언트
 
 ### 기술 스택
 
@@ -99,7 +99,10 @@
 | Backend | FastAPI, SQLAlchemy, JWT 인증 |
 | Database | PostgreSQL |
 | AI / 예측 | Prophet, pandas, numpy, scikit-learn |
-| 배포 | Railway (백엔드), Vercel (랜딩 페이지) |
+| 배포 | Railway (백엔드), Vercel (프론트엔드) |
+
+> **참고:** `frontend/` 안에는 두 개의 독립된 정적 산출물이 있습니다.
+> 실제 동작하는 앱 데모(로그인, 챌린지 생성 등)는 `frontend/mobile`을 Expo Web으로 빌드해 Vercel에 배포한 것이고, `frontend/index.html`은 README.md를 브라우저에서 보기 좋게 렌더링하는 별도의 정적 페이지입니다.
 
 ---
 
@@ -242,13 +245,14 @@ SPY-capstoneREPO/
 │     └─ README.md               # AI–백엔드 연동 명세
 │
 ├─ frontend/                     # 프론트엔드
-│  ├─ index.html                 # 랜딩 페이지
+│  ├─ index.html                 # README.md 렌더러
 │  └─ mobile/                    # React Native (Expo) 앱
 │     ├─ app/                    # 화면 (tabs, auth)
 │     ├─ components/             # 공용 컴포넌트
 │     ├─ constants/              # 테마 / mock 데이터
 │     ├─ services/               # API 요청 함수
 │     ├─ types/                  # API 타입
+│     ├─ vercel.json             # Vercel 배포 설정 (Expo Web 빌드 → spy-capstone-repo.vercel.app)
 │     └─ ...
 │
 └─ docs/                         # 기획 문서
@@ -266,6 +270,7 @@ SPY-capstoneREPO/
 |---|---|
 | `api/` | FastAPI 기반 백엔드 서버 |
 | `api/ai/` | 소비 예측 및 챌린지 생성 AI 엔진 |
+| `frontend/index.html` | README.md를 브라우저에서 보기 위한 정적 뷰어 (서비스 화면 아님) |
 | `frontend/mobile/` | React Native Expo 앱 |
 | `frontend/mobile/app/` | Expo Router 기반 화면 |
 | `frontend/mobile/components/` | 재사용 UI 컴포넌트 |
