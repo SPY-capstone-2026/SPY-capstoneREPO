@@ -60,8 +60,8 @@ EXPO_PUBLIC_API_BASE_URL=https://spy-capstonerepo-production.up.railway.app
 시연용 계정 예시는 다음과 같습니다.
 
 ```text
-이메일: demo@moni.app
-비밀번호: moni1234!
+이메일: office@moni.app
+비밀번호: 1234
 ```
 
 계정이 없다면 회원가입 화면에서 같은 정보로 생성합니다.
