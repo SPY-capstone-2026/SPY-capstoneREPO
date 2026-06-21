@@ -26,8 +26,8 @@
 ### 시연용 계정
 
 ```text
-이메일: demo@moni.app
-비밀번호: moni1234!
+이메일: office@moni.app
+비밀번호: 1234
 ```
 
 ### 핵심 흐름
