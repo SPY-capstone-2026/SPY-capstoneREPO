@@ -129,7 +129,7 @@ MVP의 핵심은 **예측 기반 소비 코칭 엔진**입니다. AI 엔진은 4
 
 ### 출력 (AI → Backend)
 
-- `projected_30d_total` — 향후 30일 예측 총 소비액
+- `predicted_monthly_spend` — 이번 달 현재까지의 실제 지출과 월말까지의 예측 지출을 합산한 예상 월 지출
 - `budget_pressure` — 예산 대비 압박도 (예: 1.20 = 예산의 120%)
 - `challenge_type` — 금지형 / 강한 제한형 / 제한형 / streak형 / 유지형
 - `challenge_text` — 오늘의 챌린지 문구
