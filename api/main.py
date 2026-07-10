@@ -1,13 +1,25 @@
 import sys
 import os
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ai'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "ai"))
 
 from fastapi import FastAPI, HTTPException, Depends
 from contextlib import asynccontextmanager
 from sqlmodel import Session, select
-from models import create_db_and_tables, engine, User, DailyChallenge, Transaction, UserCategorySetting
-from auth import hash_password, verify_password, create_access_token, get_current_user_id
+from models import (
+    create_db_and_tables,
+    engine,
+    User,
+    DailyChallenge,
+    Transaction,
+    UserCategorySetting,
+)
+from auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user_id,
+)
 from pydantic import BaseModel
 from datetime import date, datetime, time
 import pandas as pd
@@ -18,10 +30,12 @@ from calendar import monthrange
 from collections import defaultdict
 import uuid
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
+
 
 app = FastAPI(title="Moni API 서버", lifespan=lifespan)
 app.add_middleware(
@@ -31,12 +45,13 @@ app.add_middleware(
         "http://127.0.0.1:8081",
         "http://localhost:19006",
         "http://127.0.0.1:19006",
-        "https://spy-capstone-repo.vercel.app"
+        "https://spy-capstone-repo.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def ensure_default_category_settings(session: Session, user_id: str):
     existing = session.exec(
@@ -93,18 +108,9 @@ def ensure_default_category_settings(session: Session, user_id: str):
 
     return created
 
+
 def calculate_level(total_xp: int):
     return max(1, (total_xp // 100) + 1)
-
-def serialize_category_setting(setting: UserCategorySetting):
-    return {
-        "id": setting.id,
-        "user_id": setting.user_id,
-        "category_name": setting.category_name,
-        "budget_limit": setting.budget_limit,
-        "is_daily_challenge": setting.is_daily_challenge,
-        "alert_threshold": setting.alert_threshold,
-    }
 
 
 def serialize_user_progress(user: User):
@@ -113,6 +119,7 @@ def serialize_user_progress(user: User):
         "total_xp": user.total_xp,
         "current_level": user.current_level,
     }
+
 
 def serialize_user_profile(user: User):
     return {
@@ -123,10 +130,9 @@ def serialize_user_profile(user: User):
         "spend_profile": user.spend_profile,
         "total_xp": user.total_xp,
         "current_level": user.current_level,
-        "created_at": user.created_at.isoformat()
-        if user.created_at
-        else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
     }
+
 
 def serialize_challenge(challenge: DailyChallenge):
     return {
@@ -141,6 +147,7 @@ def serialize_challenge(challenge: DailyChallenge):
         "xp_reward": challenge.xp_reward,
         "ai_metadata": challenge.ai_metadata,
     }
+
 
 def make_fallback_challenge(user_id: str, target_date: date):
     return {
@@ -172,6 +179,7 @@ def make_fallback_challenge(user_id: str, target_date: date):
         },
     }
 
+
 def serialize_category_setting(setting: UserCategorySetting):
     return {
         "id": setting.id,
@@ -182,20 +190,22 @@ def serialize_category_setting(setting: UserCategorySetting):
         "alert_threshold": setting.alert_threshold,
     }
 
+
 def serialize_transaction(transaction: Transaction):
     return {
         "tx_id": transaction.tx_id,
         "user_id": transaction.user_id,
         "tx_date": transaction.tx_date.isoformat(),
-        "tx_time": transaction.tx_time.strftime("%H:%M")
-        if transaction.tx_time
-        else None,
+        "tx_time": (
+            transaction.tx_time.strftime("%H:%M") if transaction.tx_time else None
+        ),
         "amount": transaction.amount,
         "merchant_name": transaction.merchant_name,
         "mydata_category": transaction.mydata_category,
         "final_category": transaction.final_category,
         "is_user_corrected": transaction.is_user_corrected,
     }
+
 
 def get_month_date_range(target_date: date):
     first_day = target_date.replace(day=1)
@@ -272,10 +282,6 @@ def build_evaluated_categories(category_settings, monthly_transactions, today: d
 
     return evaluated
 
-class CategoryUpdateRequest(BaseModel):
-    budget_limit: Optional[int] = None
-    is_daily_challenge: Optional[bool] = None
-    alert_threshold: Optional[int] = None
 
 class UserUpdateRequest(BaseModel):
     email: Optional[str] = None
@@ -283,13 +289,16 @@ class UserUpdateRequest(BaseModel):
     payday: Optional[int] = None
     spend_profile: Optional[str] = None
 
+
 class ChallengeStatusUpdateRequest(BaseModel):
     status: str
+
 
 class CategoryUpdateRequest(BaseModel):
     budget_limit: Optional[int] = None
     is_daily_challenge: Optional[bool] = None
     alert_threshold: Optional[int] = None
+
 
 class SignupRequest(BaseModel):
     email: str
@@ -298,9 +307,11 @@ class SignupRequest(BaseModel):
     payday: int = 25
     spend_profile: str = "IMPULSIVE"
 
+
 class LoginRequest(BaseModel):
     email: str
     password: str
+
 
 class TransactionCreateRequest(BaseModel):
     tx_date: date
@@ -321,9 +332,11 @@ class TransactionUpdateRequest(BaseModel):
     final_category: Optional[str] = None
     is_user_corrected: Optional[bool] = None
 
+
 @app.get("/")
 def read_root():
     return {"message": "Moni 백엔드 서버가 살아있습니다! 🚀"}
+
 
 # [API 1] 회원가입
 @app.post("/signup")
@@ -333,7 +346,9 @@ def signup(req: SignupRequest):
         if existing:
             raise HTTPException(status_code=400, detail="이미 존재하는 이메일입니다")
         if req.payday < 1 or req.payday > 31:
-            raise HTTPException(status_code=400, detail="수입일은 1일부터 31일 사이여야 합니다")
+            raise HTTPException(
+                status_code=400, detail="수입일은 1일부터 31일 사이여야 합니다"
+            )
 
         user = User(
             user_id=str(uuid.uuid4()),
@@ -349,15 +364,19 @@ def signup(req: SignupRequest):
         ensure_default_category_settings(session, user.user_id)
         return {"status": "success", "user_id": user.user_id}
 
+
 # [API 2] 로그인
 @app.post("/login")
 def login(req: LoginRequest):
     with Session(engine) as session:
         user = session.exec(select(User).where(User.email == req.email)).first()
         if not user or not verify_password(req.password, user.password_hash):
-            raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 틀렸습니다")
+            raise HTTPException(
+                status_code=401, detail="이메일 또는 비밀번호가 틀렸습니다"
+            )
         token = create_access_token(user.user_id)
         return {"access_token": token, "token_type": "bearer"}
+
 
 # [API 3] 내 정보 조회
 @app.get("/me")
@@ -369,6 +388,7 @@ def get_me(user_id: str = Depends(get_current_user_id)):
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
         return serialize_user_profile(user)
+
 
 # [API 4] 오늘의 챌린지 생성
 @app.get("/challenges/today")
@@ -390,11 +410,9 @@ def get_today_challenges_api(user_id: str = Depends(get_current_user_id)):
         return {
             "status": "success",
             "count": len(challenges),
-            "data": [
-                serialize_challenge(challenge)
-                for challenge in challenges
-            ],
+            "data": [serialize_challenge(challenge) for challenge in challenges],
         }
+
 
 @app.post("/challenges/generate")
 def generate_challenges(user_id: str = Depends(get_current_user_id)):
@@ -417,8 +435,7 @@ def generate_challenges(user_id: str = Depends(get_current_user_id)):
                 "status": "success",
                 "count": len(existing_challenges),
                 "data": [
-                    serialize_challenge(challenge)
-                    for challenge in existing_challenges
+                    serialize_challenge(challenge) for challenge in existing_challenges
                 ],
             }
 
@@ -429,9 +446,7 @@ def generate_challenges(user_id: str = Depends(get_current_user_id)):
         category_settings = ensure_default_category_settings(session, user_id)
 
         transactions_df = pd.DataFrame([t.model_dump() for t in transactions])
-        category_settings_df = pd.DataFrame(
-            [c.model_dump() for c in category_settings]
-        )
+        category_settings_df = pd.DataFrame([c.model_dump() for c in category_settings])
 
         user_profile = user.model_dump()
 
@@ -463,12 +478,10 @@ def generate_challenges(user_id: str = Depends(get_current_user_id)):
         return {
             "status": "success",
             "count": len(saved),
-            "data": [
-                serialize_challenge(challenge)
-                for challenge in saved
-            ],
+            "data": [serialize_challenge(challenge) for challenge in saved],
         }
-        
+
+
 @app.get("/transactions")
 def get_transactions_api(user_id: str = Depends(get_current_user_id)):
     with Session(engine) as session:
@@ -550,7 +563,7 @@ def update_transaction_api(
                     status_code=400,
                     detail="날짜 형식은 YYYY-MM-DD여야 합니다",
                 )
-    
+
         if req.tx_time is not None:
             try:
                 if isinstance(req.tx_time, time):
@@ -562,7 +575,7 @@ def update_transaction_api(
                     status_code=400,
                     detail="시간 형식은 HH:MM이어야 합니다",
                 )
-    
+
         if req.amount is not None:
             transaction.amount = req.amount
 
@@ -610,6 +623,7 @@ def delete_transaction_api(
             "deleted_id": tx_id,
         }
 
+
 @app.get("/reports/monthly")
 def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
     with Session(engine) as session:
@@ -630,15 +644,9 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
             .where(Transaction.tx_date <= last_day)
         ).all()
 
-        total_spend = sum(
-            transaction.amount
-            for transaction in monthly_transactions
-        )
+        total_spend = sum(transaction.amount for transaction in monthly_transactions)
 
-        total_budget = sum(
-            category.budget_limit
-            for category in category_settings
-        )
+        total_budget = sum(category.budget_limit for category in category_settings)
 
         predicted_monthly_spend = calculate_projected_amount(total_spend, today)
 
@@ -670,7 +678,8 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
                 "evaluated_categories": evaluated_categories,
             },
         }
-    
+
+
 @app.patch("/challenges/{challenge_id}/status")
 def update_challenge_status_api(
     challenge_id: int,
@@ -720,7 +729,8 @@ def update_challenge_status_api(
                 "user_progress": serialize_user_progress(user),
             },
         }
-    
+
+
 @app.patch("/me")
 def update_me_api(
     req: UserUpdateRequest,
@@ -743,7 +753,9 @@ def update_me_api(
             ).first()
 
             if existing_user and existing_user.user_id != user_id:
-                raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다")
+                raise HTTPException(
+                    status_code=409, detail="이미 사용 중인 이메일입니다"
+                )
 
             user.email = email
 
@@ -752,7 +764,9 @@ def update_me_api(
 
         if req.payday is not None:
             if req.payday < 1 or req.payday > 31:
-                raise HTTPException(status_code=400, detail="수입일은 1일부터 31일 사이여야 합니다")
+                raise HTTPException(
+                    status_code=400, detail="수입일은 1일부터 31일 사이여야 합니다"
+                )
 
             user.payday = req.payday
 
@@ -767,7 +781,8 @@ def update_me_api(
             "status": "success",
             "data": serialize_user_profile(user),
         }
-    
+
+
 @app.get("/categories")
 def get_categories_api(user_id: str = Depends(get_current_user_id)):
     with Session(engine) as session:
@@ -781,10 +796,7 @@ def get_categories_api(user_id: str = Depends(get_current_user_id)):
         return {
             "status": "success",
             "count": len(categories),
-            "data": [
-                serialize_category_setting(category)
-                for category in categories
-            ],
+            "data": [serialize_category_setting(category) for category in categories],
         }
 
 
@@ -805,7 +817,9 @@ def update_category_api(
 
         if req.budget_limit is not None:
             if req.budget_limit < 0:
-                raise HTTPException(status_code=400, detail="예산은 0원 이상이어야 합니다")
+                raise HTTPException(
+                    status_code=400, detail="예산은 0원 이상이어야 합니다"
+                )
 
             category.budget_limit = req.budget_limit
 
@@ -814,7 +828,9 @@ def update_category_api(
 
         if req.alert_threshold is not None:
             if req.alert_threshold < 1 or req.alert_threshold > 100:
-                raise HTTPException(status_code=400, detail="알림 기준은 1부터 100 사이여야 합니다")
+                raise HTTPException(
+                    status_code=400, detail="알림 기준은 1부터 100 사이여야 합니다"
+                )
 
             category.alert_threshold = req.alert_threshold
 
