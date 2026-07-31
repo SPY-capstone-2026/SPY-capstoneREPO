@@ -81,6 +81,18 @@ class DailyChallenge(SQLModel, table=True):
 
 
 # ----------------------------------------
+# 6. Category 테이블 (카테고리 마스터)
+# ----------------------------------------
+class Category(SQLModel, table=True):
+    category_id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    name: str                           # 카페, 식비, 쇼핑 등
+    icon: Optional[str] = None          # 아이콘 이름
+    color: Optional[str] = None         # UI 색상 코드
+    parent_category: Optional[str] = None  # 대분류
+    is_default: bool = Field(default=True)
+
+
+# ----------------------------------------
 # 데이터베이스 연결 엔진 설정 (SQLite 사용)
 # ----------------------------------------
 from dotenv import load_dotenv
