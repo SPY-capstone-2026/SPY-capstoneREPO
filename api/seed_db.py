@@ -1,11 +1,12 @@
 import pandas as pd
 from sqlmodel import Session, select
-from models import engine, create_db_and_tables, User, Transaction, UserCategorySetting, Category
+from models import engine, create_db_and_tables, User, Transaction, UserCategorySetting, Category, DailyChallenge
 from datetime import date, time
 
 # 기존 데이터 전체 초기화
 with Session(engine) as session:
-    session.exec(select(Transaction).where(True))
+    for t in session.exec(select(DailyChallenge)).all():
+        session.delete(t)
     for t in session.exec(select(Transaction)).all():
         session.delete(t)
     for c in session.exec(select(UserCategorySetting)).all():
