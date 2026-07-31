@@ -109,8 +109,15 @@ def ensure_default_category_settings(session: Session, user_id: str):
     return created
 
 
-def calculate_level(total_xp: int):
-    return max(1, (total_xp // 100) + 1)
+def calculate_level(total_xp: int, session: Session = None) -> int:
+    # LevelDefinition 테이블이 생기면 여기서 DB 조회로 교체 가능
+    # 지금은 임시 규칙 사용
+    thresholds = [0, 100, 250, 500, 800, 1200, 1700, 2300, 3000, 4000]
+    level = 1
+    for i, xp in enumerate(thresholds):
+        if total_xp >= xp:
+            level = i + 1
+    return level
 
 
 def serialize_user_progress(user: User):
@@ -450,12 +457,16 @@ def generate_challenges(user_id: str = Depends(get_current_user_id)):
 
         user_profile = user.model_dump()
 
-        challenges = get_today_challenges(
-            transactions_df=transactions_df,
-            user_profile=user_profile,
-            category_settings_df=category_settings_df,
-            target_date=today,
-        )
+        try:
+            challenges = get_today_challenges(
+                transactions_df=transactions_df,
+                user_profile=user_profile,
+                category_settings_df=category_settings_df,
+                target_date=today,
+            )
+        except Exception as e:
+            print(f"[WARNING] AI 엔진 오류, fallback 사용: {e}")
+            challenges = []
 
         if not challenges:
             challenges = [make_fallback_challenge(user_id, today)]
