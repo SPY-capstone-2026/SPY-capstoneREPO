@@ -34,7 +34,7 @@ def make_daily_series(
     category_name: str,
     target_date,
     valid_data_start_date=None,
-    lookback_days: int = 180,
+    lookback_days: int = 365,
 ) -> pd.DataFrame:
     """
     특정 사용자의 특정 카테고리에 대한 일 단위 소비 시계열을 만든다.
@@ -54,7 +54,7 @@ def make_daily_series(
     valid_data_start_date : date | str | None
         이 날짜 이전 거래는 사용하지 않는다. (Users.valid_data_start_date에서 옴)
     lookback_days : int
-        target_date로부터 거슬러 올라가는 최대 일수. 기본 180일.
+        target_date로부터 거슬러 올라가는 최대 일수. 180(prophet) -> 365(LSTM)으로 변경
 
     Returns
     -------
@@ -206,3 +206,25 @@ def has_category_correction(
     if df.empty:
         return False
     return bool(df["is_user_corrected"].fillna(False).any())
+
+def get_transaction_count(transactions_df, user_id, category_name, target_date, valid_data_start_date=None, lookback_days=365):
+    """
+    lookback 기간 내 해당 카테고리의 원본 거래 건수(row 수).
+    일별 합산 전 실제 거래 횟수를 센다 (하루 여러 번도 각각 카운트).
+    """
+    target_date = _coerce_date(target_date)
+    start_date = target_date - timedelta(days=lookback_days)
+
+    df = transactions_df[
+        (transactions_df["user_id"] == user_id)
+        & (transactions_df["final_category"] == category_name)
+        & (pd.to_datetime(transactions_df["tx_date"]).dt.date >= start_date)
+        & (pd.to_datetime(transactions_df["tx_date"]).dt.date < target_date)
+    ]
+
+    # valid_data_start_date 컷오프 추가
+    if valid_data_start_date is not None and not pd.isna(valid_data_start_date):
+        valid_start = _coerce_date(valid_data_start_date)
+        df = df[df["tx_date"] >= valid_start]
+
+    return len(df)

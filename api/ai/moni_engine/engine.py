@@ -35,6 +35,7 @@ from moni_engine.preprocessing import (
     get_month_to_date_actual,
     has_category_correction,
     compute_no_spend_streak,
+    get_transaction_count,
 )
 from moni_engine.prediction import (
     predict_monthly_spend,
@@ -47,7 +48,7 @@ from moni_engine.challenge import (
 )
 
 
-SCHEMA_VERSION = "1.1"   # 1.0 → 1.1: 다건 반환 + streak 챌린지 추가
+SCHEMA_VERSION = "1.2"   # 1.0 → 1.1: 다건 반환 + streak 챌린지 추가 / 1.2: ai_metadata에 predicted_today 추가
 MAX_PRESSURE_CHALLENGES = 3   # 압박도 챌린지 최대 개수
 MAX_STREAK_BONUSES = 1        # streak 보너스 최대 개수 (C안)
 
@@ -74,10 +75,16 @@ def _evaluate_category(
         category_name=category_name,
         target_date=target_date,
     )
+
+    tx_count = get_transaction_count(
+        transactions_df, user_id, category_name, target_date, valid_data_start_date=valid_data_start_date,
+        )
+
     forecast = predict_monthly_spend(
         daily_df=daily_df,
         target_date=target_date,
         month_to_date_actual=mtd_actual,
+        tx_count=tx_count,
     )
     pressure = calculate_budget_pressure(
         predicted_monthly_spend=forecast["predicted_monthly_spend"],
@@ -123,6 +130,7 @@ def _build_pressure_challenge(ev: dict, user_id: str, target_date: date) -> dict
             "challenge_origin": "pressure",
             "budget_limit": ev["budget_limit"],
             "predicted_monthly_spend": ev["predicted_monthly_spend"],
+            "predicted_today": ev.get("predicted_today", 0.0),
             "month_to_date_actual": ev["month_to_date_actual"],
             "predicted_remaining_spend": ev["predicted_remaining_spend"],
             "forecast_lower": ev["forecast_lower"],
