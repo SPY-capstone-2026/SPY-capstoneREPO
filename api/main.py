@@ -1,5 +1,9 @@
 import sys
 import os
+from services.leveling import (
+    process_challenge_completion,
+    calculate_level_from_xp,
+)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "ai"))
 
@@ -109,15 +113,8 @@ def ensure_default_category_settings(session: Session, user_id: str):
     return created
 
 
-def calculate_level(total_xp: int, session: Session = None) -> int:
-    # LevelDefinition 테이블이 생기면 여기서 DB 조회로 교체 가능
-    # 지금은 임시 규칙 사용
-    thresholds = [0, 100, 250, 500, 800, 1200, 1700, 2300, 3000, 4000]
-    level = 1
-    for i, xp in enumerate(thresholds):
-        if total_xp >= xp:
-            level = i + 1
-    return level
+# 👆 여기 있던 calculate_level(total_xp, session) 함수는 통째로 삭제했습니다.
+#    이제 레벨 계산은 services/leveling.py의 calculate_level_from_xp() 하나로 통일합니다.
 
 
 def serialize_user_progress(user: User):
@@ -125,6 +122,7 @@ def serialize_user_progress(user: User):
         "user_id": user.user_id,
         "total_xp": user.total_xp,
         "current_level": user.current_level,
+        "current_points": user.current_points,  # 👈 추가
     }
 
 
@@ -718,26 +716,35 @@ def update_challenge_status_api(
 
         previous_status = challenge.status
         challenge.status = req.status
+        session.add(challenge)
+
+        level_result = None
 
         if previous_status != "SUCCESS" and req.status == "SUCCESS":
-            user.total_xp += challenge.xp_reward
+            # 챌린지 달성 → XP 적립 + 레벨업/포인트 판정 (내부에서 commit까지 처리)
+            level_result = process_challenge_completion(
+                session, user, challenge.xp_reward
+            )
 
-        if previous_status == "SUCCESS" and req.status != "SUCCESS":
+        elif previous_status == "SUCCESS" and req.status != "SUCCESS":
+            # 챌린지 완료 취소 → XP만 롤백 (이미 지급된 포인트/아이템은 되돌리지 않음)
             user.total_xp = max(0, user.total_xp - challenge.xp_reward)
+            user.current_level = calculate_level_from_xp(user.total_xp)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
 
-        user.current_level = calculate_level(user.total_xp)
+        else:
+            session.commit()
 
-        session.add(challenge)
-        session.add(user)
-        session.commit()
         session.refresh(challenge)
-        session.refresh(user)
 
         return {
             "status": "success",
             "data": {
                 "challenge": serialize_challenge(challenge),
                 "user_progress": serialize_user_progress(user),
+                "level_result": level_result,
             },
         }
 

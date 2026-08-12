@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, UniqueConstraint
 from sqlmodel import Field, SQLModel, create_engine
 from datetime import date, time, datetime
 import uuid
@@ -18,6 +18,7 @@ class User(SQLModel, table=True):
     valid_data_start_date: Optional[date] = None
     total_xp: int = Field(default=0)
     current_level: int = Field(default=1)
+    current_points: int = Field(default=0)  # 👈 추가된 필드
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -64,7 +65,6 @@ class AIDailyFeature(SQLModel, table=True):
 # 5. Daily_Challenges 테이블 (코칭 및 게이미피케이션)
 # ----------------------------------------
 class DailyChallenge(SQLModel, table=True):
-    # UUID 대신 DB AUTO_INCREMENT (자동 증가 정수) 적용!
     challenge_id: Optional[int] = Field(default=None, primary_key=True)
 
     user_id: str = Field(foreign_key="user.user_id")
@@ -76,7 +76,6 @@ class DailyChallenge(SQLModel, table=True):
     status: str = Field(default="PENDING")
     xp_reward: int
 
-    # 💡 [핵심] AI 예측 메타데이터를 통째로 담을 JSON 컬럼 추가!
     ai_metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
@@ -84,16 +83,61 @@ class DailyChallenge(SQLModel, table=True):
 # 6. Category 테이블 (카테고리 마스터)
 # ----------------------------------------
 class Category(SQLModel, table=True):
-    category_id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
-    name: str                           # 카페, 식비, 쇼핑 등
-    icon: Optional[str] = None          # 아이콘 이름
-    color: Optional[str] = None         # UI 색상 코드
-    parent_category: Optional[str] = None  # 대분류
+    category_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()), primary_key=True
+    )
+    name: str
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    parent_category: Optional[str] = None
     is_default: bool = Field(default=True)
 
 
 # ----------------------------------------
-# 데이터베이스 연결 엔진 설정 (SQLite 사용)
+# 7. Point_Transactions 테이블 (포인트 적립/사용 로그)
+# ----------------------------------------
+class PointTransaction(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    amount: int
+    reason: str
+    reference_id: Optional[str] = None
+    balance_after: int
+    created_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+# ----------------------------------------
+# 8. Shop_Items 테이블 (상점 아이템 마스터)
+# ----------------------------------------
+class ShopItem(SQLModel, table=True):
+    item_id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    name: str
+    description: Optional[str] = None
+    category: str
+    price: Optional[int] = None
+    image_url: Optional[str] = None
+    is_purchasable: bool = Field(default=True)
+    is_repeatable: bool = Field(default=False)
+    rarity: str = Field(default="COMMON")
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+    unlock_level: Optional[int] = Field(default=None, index=True)
+
+
+# ----------------------------------------
+# 9. User_Inventory 테이블 (유저가 보유한 아이템)
+# ----------------------------------------
+class UserInventory(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    item_id: str = Field(foreign_key="shopitem.item_id", index=True)
+    acquired_type: str
+    is_equipped: bool = Field(default=False)
+    acquired_at: datetime = Field(default_factory=datetime.now)
+
+
+# ----------------------------------------
+# 데이터베이스 연결 엔진 설정
 # ----------------------------------------
 from dotenv import load_dotenv
 import os
