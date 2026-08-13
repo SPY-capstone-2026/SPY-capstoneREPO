@@ -18,7 +18,7 @@ predicted_monthly_spend
 
 모델 선택
 ----------
-- nonzero_ratio >= 0.15 AND data_points >= 30  → Prophet
+- data_points >= 90 AND (nonzero_ratio >= 0.2 or tx_count>=50) → LSTM
 - 그 외 (sparse 카테고리, 데이터 부족)         → simple_average
 """
 
@@ -40,8 +40,9 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 # 모델 선택 기준
-MIN_DATA_POINTS_FOR_PROPHET = 30
-MIN_NONZERO_RATIO_FOR_PROPHET = 0.15
+MIN_DATA_POINTS_FOR_LSTM = 90       # 30 → 90
+MIN_NONZERO_RATIO_FOR_LSTM = 0.2    # 0.15 → 0.2
+MIN_TX_COUNT_FOR_LSTM = 50          # 신규: 총거래횟수 OR 조건
 
 
 def get_current_month_window(target_date) -> Tuple[date, date]:
@@ -61,9 +62,60 @@ def get_current_month_window(target_date) -> Tuple[date, date]:
     month_end = next_month - timedelta(days=1)
     return month_start, month_end
 
+def _predict_with_lstm(daily_df: pd.DataFrame, periods: int) -> dict:
+    """LSTM으로 향후 periods일 예측. 매번 새로 학습."""
+    import os
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    import tensorflow as tf
+    tf.get_logger().setLevel("ERROR")
+    tf.random.set_seed(42)   # 재현성 (팀 결정 필요 - 아래 설명)
+    np.random.seed(42)
 
+    y = daily_df["y"].values.astype(float)
+    if len(y) < 40:
+        # 안전 폴백
+        return _predict_with_simple_average(daily_df, periods)
+
+    y_max = y.max() if y.max() > 0 else 1.0
+    y_norm = y / y_max
+
+    window = 14
+    X, Y = [], []
+    for i in range(len(y_norm) - window):
+        X.append(y_norm[i:i+window])
+        Y.append(y_norm[i+window])
+    X = np.array(X).reshape(-1, window, 1)
+    Y = np.array(Y)
+
+    model = tf.keras.Sequential([
+        tf.keras.layers.LSTM(32, input_shape=(window, 1)),
+        tf.keras.layers.Dense(1),
+    ])
+    model.compile(optimizer="adam", loss="mse")
+    model.fit(X, Y, epochs=30, batch_size=16, verbose=0)
+
+    # 재귀적으로 periods일 예측
+    seq = list(y_norm[-window:])
+    preds = []
+    for _ in range(periods):
+        x = np.array(seq[-window:]).reshape(1, window, 1)
+        p = max(0.0, model.predict(x, verbose=0)[0][0])
+        preds.append(p)
+        seq.append(p)
+    preds = np.array(preds) * y_max
+
+    return {
+        "predicted_remaining_spend": float(preds.sum()),
+        "forecast_lower": float(preds.sum() * 0.8),   # LSTM은 구간추정이 없어 근사
+        "forecast_upper": float(preds.sum() * 1.2),
+        "predicted_today": float(preds[0]),           # 챌린지 한도용 (신규)
+    }
+
+
+
+"""
 def _predict_with_prophet(daily_df: pd.DataFrame, periods: int) -> dict:
-    """Prophet으로 향후 periods일 예측. 결과는 yhat sum 등 dict로 반환."""
+    # Prophet으로 향후 periods일 예측. 결과는 yhat sum 등 dict로 반환.
     from prophet import Prophet  # 무거우므로 lazy import
 
     model = Prophet(
@@ -91,7 +143,7 @@ def _predict_with_prophet(daily_df: pd.DataFrame, periods: int) -> dict:
         "forecast_lower": float(yhat_lower.sum()),
         "forecast_upper": float(yhat_upper.sum()),
     }
-
+"""
 
 def _predict_with_simple_average(daily_df: pd.DataFrame, periods: int) -> dict:
     """
@@ -126,6 +178,7 @@ def predict_monthly_spend(
     daily_df: pd.DataFrame,
     target_date,
     month_to_date_actual: float,
+    tx_count: int = 0,
 ) -> dict:
     """
     이번 달 월말 예상 지출을 계산한다.
@@ -180,14 +233,14 @@ def predict_monthly_spend(
         forecast = {"predicted_remaining_spend": 0.0,
                     "forecast_lower": 0.0,
                     "forecast_upper": 0.0}
-    elif (data_points >= MIN_DATA_POINTS_FOR_PROPHET
-          and nonzero_ratio >= MIN_NONZERO_RATIO_FOR_PROPHET
-          and days_remaining > 0):
+    elif (data_points >= MIN_DATA_POINTS_FOR_LSTM
+      and (nonzero_ratio >= MIN_NONZERO_RATIO_FOR_LSTM
+           or tx_count >= MIN_TX_COUNT_FOR_LSTM)   # OR 조건 추가
+      and days_remaining > 0):
         try:
-            forecast = _predict_with_prophet(daily_df, days_remaining)
-            model_used = "prophet"
+            forecast = _predict_with_lstm(daily_df, days_remaining)
+            model_used = "lstm"
         except Exception:
-            # Prophet이 예외를 뱉으면 simple_average로 안전 폴백
             forecast = _predict_with_simple_average(daily_df, days_remaining)
             model_used = "simple_average"
     else:
@@ -210,6 +263,8 @@ def predict_monthly_spend(
         "month_end_date": month_end.isoformat(),
         "days_remaining_in_month": int(days_remaining),
         "month_progress_ratio": float(month_progress_ratio),
+        "tx_count_used": int(tx_count),        # 신규
+        "predicted_today": forecast.get("predicted_today", 0.0),  # 신규
     }
 
 
