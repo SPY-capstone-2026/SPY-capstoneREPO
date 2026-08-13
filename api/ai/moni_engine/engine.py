@@ -45,7 +45,10 @@ from moni_engine.challenge import (
     generate_challenge,
     generate_streak_challenge,
     streak_qualifies,
+    build_context_label,
+    rule_based_text,
 )
+from moni_engine.llm_client import generate_challenge_text
 
 
 SCHEMA_VERSION = "1.2"   # 1.0 → 1.1: 다건 반환 + streak 챌린지 추가 / 1.2: ai_metadata에 predicted_today 추가
@@ -97,31 +100,68 @@ def _evaluate_category(
     )
     streak = compute_no_spend_streak(daily_df, target_date)
 
+    # 최근 소비 평균 (맥락 라벨용). 최근 30일(또는 가능한 만큼)의 0 포함 일평균.
+    if not daily_df.empty:
+        recent_window = min(30, len(daily_df))
+        recent_daily_avg = float(daily_df["y"].tail(recent_window).mean())
+    else:
+        recent_daily_avg = 0.0
+
     return {
         "category_name": category_name,
         "budget_limit": float(budget_limit),
         "budget_pressure": float(pressure),
         "category_correction_applied": correction,
         "no_spend_streak": int(streak),
+        "recent_daily_avg": recent_daily_avg,
         **forecast,
     }
 
 
 def _build_pressure_challenge(ev: dict, user_id: str, target_date: date) -> dict:
-    """평가 결과 → 압박도 챌린지 Daily_Challenges row."""
+    """평가 결과 → 압박도 챌린지 Daily_Challenges row.
+
+    흐름:
+    1. generate_challenge로 감축률 기반 한도/유형/XP 계산 (문구 제외)
+    2. build_context_label로 맥락 라벨 생성
+    3. LLM으로 문구 생성 (실패 시 규칙 기반 폴백)
+    4. Daily_Challenges row 조립
+    """
+    # 1. 한도/유형/XP 계산 (문구 없음)
     challenge = generate_challenge(
         category_name=ev["category_name"],
         budget_limit=ev["budget_limit"],
         predicted_monthly_spend=ev["predicted_monthly_spend"],
         budget_pressure=ev["budget_pressure"],
+        predicted_today=ev.get("predicted_today", 0.0),
+        predicted_remaining_spend=ev["predicted_remaining_spend"],
+        month_to_date_actual=ev["month_to_date_actual"],
         month_progress_ratio=ev.get("month_progress_ratio"),
     )
+
+    # 2. 맥락 라벨
+    context_label = build_context_label(
+        predicted_today=ev.get("predicted_today", 0.0),
+        recent_daily_avg=ev.get("recent_daily_avg", 0.0),
+        no_spend_streak=ev["no_spend_streak"],
+        month_progress_ratio=ev.get("month_progress_ratio", 0.0),
+        budget_pressure=ev["budget_pressure"],
+    )
+
+    # 3. 문구 생성 (LLM → 실패 시 폴백)
+    text_result = generate_challenge_text(
+        category_name=ev["category_name"],
+        challenge_type=challenge["challenge_type"],
+        daily_limit=challenge["daily_limit"],
+        context_label=context_label,
+    )
+
     return {
         "user_id": user_id,
         "category_name": ev["category_name"],
         "challenge_date": target_date.isoformat(),
         "challenge_type": challenge["challenge_type"],
-        "challenge_text": challenge["challenge_text"],
+        "challenge_text": text_result["challenge_text"],
         "difficulty": challenge["difficulty"],
         "status": "PENDING",
         "xp_reward": challenge["xp_reward"],
@@ -136,6 +176,15 @@ def _build_pressure_challenge(ev: dict, user_id: str, target_date: date) -> dict
             "forecast_lower": ev["forecast_lower"],
             "forecast_upper": ev["forecast_upper"],
             "budget_pressure": round(ev["budget_pressure"], 4),
+            # --- 감축률/한도 (신규) ---
+            "daily_limit": challenge["daily_limit"],
+            "pressure_reduction": challenge["pressure_reduction"],
+            "budget_reduction": challenge["budget_reduction"],
+            "final_reduction": round(challenge["final_reduction"], 4),
+            "limit_source": challenge["limit_source"],
+            "context_label": context_label,
+            "text_source": text_result["text_source"],
+            # --- 예측/기간 정보 ---
             "model_used": ev["model_used"],
             "data_points_used": ev["data_points_used"],
             "nonzero_ratio": round(ev["nonzero_ratio"], 4),
