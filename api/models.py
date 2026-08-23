@@ -77,6 +77,7 @@ class DailyChallenge(SQLModel, table=True):
     xp_reward: int
 
     ai_metadata: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    reward_snapshot: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 # ----------------------------------------

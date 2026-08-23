@@ -3,6 +3,7 @@ import os
 from services.leveling import (
     process_challenge_completion,
     calculate_level_from_xp,
+    reverse_challenge_completion,
 )
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "ai"))
@@ -151,6 +152,7 @@ def serialize_challenge(challenge: DailyChallenge):
         "status": challenge.status,
         "xp_reward": challenge.xp_reward,
         "ai_metadata": challenge.ai_metadata,
+        "reward_snapshot": challenge.reward_snapshot,
     }
 
 
@@ -719,22 +721,27 @@ def update_challenge_status_api(
         session.add(challenge)
 
         level_result = None
+        reversal_result = None
 
         if previous_status != "SUCCESS" and req.status == "SUCCESS":
-            # 챌린지 달성 → XP 적립 + 레벨업/포인트 판정 (내부에서 commit까지 처리)
-            level_result = process_challenge_completion(
-                session, user, challenge.xp_reward
-            )
+            # 챌린지 달성 → XP 적립 + 레벨업/포인트 판정
+            level_result = process_challenge_completion(session, user, challenge.xp_reward)
+            # 완료 시점의 지급 내역을 챌린지에 스냅샷으로 저장 (취소 시 정확히 회수하기 위함)
+            challenge.reward_snapshot = level_result
+            session.add(challenge)
+            session.commit()
+            session.refresh(challenge)
 
         elif previous_status == "SUCCESS" and req.status != "SUCCESS":
-            # 챌린지 완료 취소 → XP만 롤백 (이미 지급된 포인트/아이템은 되돌리지 않음)
-            user.total_xp = max(0, user.total_xp - challenge.xp_reward)
-            user.current_level = calculate_level_from_xp(user.total_xp)
-            session.add(user)
+            # 챌린지 완료 취소 → 스냅샷 기준으로 XP + 포인트 + 마일스톤 아이템 전부 회수
+            reversal_result = reverse_challenge_completion(session, user, challenge)
+            challenge.reward_snapshot = None  # 회수 완료했으니 스냅샷 제거
+            session.add(challenge)
             session.commit()
-            session.refresh(user)
+            session.refresh(challenge)
 
         else:
+            # 동일 상태로의 반복 요청 등 -> 중복 지급/회수 없이 상태만 저장
             session.commit()
 
         session.refresh(challenge)
@@ -745,6 +752,7 @@ def update_challenge_status_api(
                 "challenge": serialize_challenge(challenge),
                 "user_progress": serialize_user_progress(user),
                 "level_result": level_result,
+                "reversal_result": reversal_result,
             },
         }
 
