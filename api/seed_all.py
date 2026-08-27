@@ -35,6 +35,7 @@ from models import (
 )
 from auth import hash_password
 
+
 # ----------------------------------------
 # 설정 (수정은 여기서)
 # ----------------------------------------
@@ -66,41 +67,11 @@ USERS_SEED = [
 # 카테고리별 예산 설정 시드 — 대학생 예산 규모로 조정, 교통 항목 추가
 # ⚠️ alert_threshold는 0~1 소수(비율)가 아니라 1~100 정수(퍼센트)입니다.
 CATEGORY_SETTINGS_SEED = [
-    {
-        "user_id": "user-office-001",
-        "category_name": "카페",
-        "budget_limit": 80000,
-        "is_daily_challenge": True,
-        "alert_threshold": 80,
-    },
-    {
-        "user_id": "user-office-001",
-        "category_name": "식비",
-        "budget_limit": 300000,
-        "is_daily_challenge": True,
-        "alert_threshold": 90,
-    },
-    {
-        "user_id": "user-office-001",
-        "category_name": "의류",
-        "budget_limit": 100000,
-        "is_daily_challenge": True,
-        "alert_threshold": 80,
-    },
-    {
-        "user_id": "user-office-001",
-        "category_name": "화장품",
-        "budget_limit": 60000,
-        "is_daily_challenge": True,
-        "alert_threshold": 80,
-    },
-    {
-        "user_id": "user-office-001",
-        "category_name": "교통",
-        "budget_limit": 50000,
-        "is_daily_challenge": False,
-        "alert_threshold": 90,
-    },
+    {"user_id": "user-office-001", "category_name": "카페", "budget_limit": 80000, "is_daily_challenge": True, "alert_threshold": 80},
+    {"user_id": "user-office-001", "category_name": "식비", "budget_limit": 300000, "is_daily_challenge": True, "alert_threshold": 90},
+    {"user_id": "user-office-001", "category_name": "의류", "budget_limit": 100000, "is_daily_challenge": True, "alert_threshold": 80},
+    {"user_id": "user-office-001", "category_name": "화장품", "budget_limit": 60000, "is_daily_challenge": True, "alert_threshold": 80},
+    {"user_id": "user-office-001", "category_name": "교통", "budget_limit": 50000, "is_daily_challenge": False, "alert_threshold": 90},
 ]
 
 
@@ -110,15 +81,15 @@ CATEGORY_SETTINGS_SEED = [
 # ----------------------------------------
 def reset_all_tables(session: Session):
     tables_in_delete_order = [
-        UserInventory,  # user, shopitem을 참조
-        PointTransaction,  # user를 참조
-        DailyChallenge,  # user를 참조
-        AIDailyFeature,  # user를 참조
-        Transaction,  # user를 참조
-        UserCategorySetting,  # user를 참조
-        ShopItem,  # 참조 없음 (UserInventory가 먼저 삭제되어야 안전)
-        Category,  # 참조 없음
-        User,  # 다른 테이블이 참조하는 부모 -> 반드시 마지막에 삭제
+        UserInventory,       # user, shopitem을 참조
+        PointTransaction,    # user를 참조
+        DailyChallenge,      # user를 참조
+        AIDailyFeature,      # user를 참조
+        Transaction,         # user를 참조
+        UserCategorySetting, # user를 참조
+        ShopItem,            # 참조 없음 (UserInventory가 먼저 삭제되어야 안전)
+        Category,            # 참조 없음
+        User,                # 다른 테이블이 참조하는 부모 -> 반드시 마지막에 삭제
     ]
 
     for table in tables_in_delete_order:
@@ -138,9 +109,7 @@ def seed_users(session: Session):
         user = User(
             user_id=item["user_id"],
             email=item["email"],
-            password_hash=hash_password(
-                DEFAULT_PASSWORD
-            ),  # 더미 문자열이 아닌 실제 해시
+            password_hash=hash_password(DEFAULT_PASSWORD),  # 더미 문자열이 아닌 실제 해시
             income_type=item.get("income_type"),
             payday=item.get("payday"),
             spend_profile=item.get("spend_profile"),
@@ -201,42 +170,12 @@ def seed_category_settings(session: Session):
 # ----------------------------------------
 def seed_master_categories(session: Session):
     master_categories = [
-        {
-            "name": "카페",
-            "icon": "coffee",
-            "color": "#A0522D",
-            "parent_category": "식품",
-        },
-        {
-            "name": "식비",
-            "icon": "restaurant",
-            "color": "#FF6B35",
-            "parent_category": "식품",
-        },
-        {
-            "name": "의류",
-            "icon": "checkroom",
-            "color": "#9B59B6",
-            "parent_category": "쇼핑",
-        },
-        {
-            "name": "화장품",
-            "icon": "face",
-            "color": "#E91E63",
-            "parent_category": "쇼핑",
-        },
-        {
-            "name": "가전",
-            "icon": "devices",
-            "color": "#2196F3",
-            "parent_category": "생활",
-        },
-        {
-            "name": "교통",
-            "icon": "directions_bus",
-            "color": "#4CAF50",
-            "parent_category": "이동",
-        },
+        {"name": "카페", "icon": "coffee", "color": "#A0522D", "parent_category": "식품"},
+        {"name": "식비", "icon": "restaurant", "color": "#FF6B35", "parent_category": "식품"},
+        {"name": "의류", "icon": "checkroom", "color": "#9B59B6", "parent_category": "쇼핑"},
+        {"name": "화장품", "icon": "face", "color": "#E91E63", "parent_category": "쇼핑"},
+        {"name": "가전", "icon": "devices", "color": "#2196F3", "parent_category": "생활"},
+        {"name": "교통", "icon": "directions_bus", "color": "#4CAF50", "parent_category": "이동"},
     ]
 
     for cat in master_categories:
@@ -248,72 +187,63 @@ def seed_master_categories(session: Session):
 
 # ----------------------------------------
 # 6. 상점 아이템 삽입 (구매용 + 마일스톤 전용)
-#    ※ 이 부분이 seed_shop_items.py를 흡수한 부분입니다.
+#    ※ 캐릭터는 단순화(색상 변경 + 소품 악세서리만), 방 꾸미기가 메인 콘텐츠
+#    카테고리: CHARACTER(색상) / ACCESSORY(소품 악세서리) / WALLPAPER(벽지) /
+#             FLOORING(바닥) / FURNITURE(가구) / DECOR(소품) / THEME(풀세트)
 # ----------------------------------------
 def seed_shop_items(session: Session):
     purchasable_items = [
+        # --- CHARACTER: 캐릭터 색상 (매우 단순, 소수만) ---
+        {"name": "민트 컬러", "category": "CHARACTER", "price": 30, "rarity": "COMMON"},
+        {"name": "코랄 컬러", "category": "CHARACTER", "price": 30, "rarity": "COMMON"},
+        {"name": "딥블루 컬러", "category": "CHARACTER", "price": 30, "rarity": "COMMON"},
+        {"name": "골드 컬러", "category": "CHARACTER", "price": 500, "rarity": "EPIC"},
+
+        # --- ACCESSORY: 캐릭터에 다는 작은 소품 ---
         {"name": "리본", "category": "ACCESSORY", "price": 30, "rarity": "COMMON"},
-        {
-            "name": "동그란 안경",
-            "category": "ACCESSORY",
-            "price": 50,
-            "rarity": "COMMON",
-        },
-        {"name": "미니 모자", "category": "ACCESSORY", "price": 80, "rarity": "COMMON"},
-        {"name": "캐주얼 후드티", "category": "SKIN", "price": 150, "rarity": "COMMON"},
-        {"name": "파자마 세트", "category": "SKIN", "price": 200, "rarity": "COMMON"},
-        {"name": "정장 세트", "category": "SKIN", "price": 250, "rarity": "RARE"},
-        {
-            "name": "화분 세트",
-            "category": "FURNITURE",
-            "price": 180,
-            "rarity": "COMMON",
-        },
-        {
-            "name": "아늑한 소파",
-            "category": "FURNITURE",
-            "price": 200,
-            "rarity": "COMMON",
-        },
-        {
-            "name": "책상 & 스탠드",
-            "category": "FURNITURE",
-            "price": 250,
-            "rarity": "COMMON",
-        },
-        {"name": "침대", "category": "FURNITURE", "price": 350, "rarity": "RARE"},
-        {
-            "name": "아침 방 배경",
-            "category": "BACKGROUND",
-            "price": 400,
-            "rarity": "RARE",
-        },
-        {
-            "name": "밤하늘 배경",
-            "category": "BACKGROUND",
-            "price": 500,
-            "rarity": "RARE",
-        },
-        {
-            "name": "카페 테마 배경",
-            "category": "BACKGROUND",
-            "price": 600,
-            "rarity": "RARE",
-        },
-        {"name": "골드 정장", "category": "SKIN", "price": 1200, "rarity": "EPIC"},
-        {
-            "name": "우주 테마 배경",
-            "category": "BACKGROUND",
-            "price": 1500,
-            "rarity": "EPIC",
-        },
+        {"name": "머리핀", "category": "ACCESSORY", "price": 30, "rarity": "COMMON"},
+        {"name": "미니 모자", "category": "ACCESSORY", "price": 60, "rarity": "COMMON"},
+        {"name": "왕관", "category": "ACCESSORY", "price": 90, "rarity": "RARE"},
+
+        # --- WALLPAPER: 벽지 ---
+        {"name": "베이지 무지 벽지", "category": "WALLPAPER", "price": 40, "rarity": "COMMON"},
+        {"name": "스트라이프 벽지", "category": "WALLPAPER", "price": 70, "rarity": "COMMON"},
+        {"name": "우드패널 벽지", "category": "WALLPAPER", "price": 130, "rarity": "RARE"},
+        {"name": "플로럴 벽지", "category": "WALLPAPER", "price": 160, "rarity": "RARE"},
+        {"name": "갤럭시 벽지", "category": "WALLPAPER", "price": 900, "rarity": "EPIC"},
+
+        # --- FLOORING: 바닥 ---
+        {"name": "원목 바닥", "category": "FLOORING", "price": 40, "rarity": "COMMON"},
+        {"name": "타일 바닥", "category": "FLOORING", "price": 60, "rarity": "COMMON"},
+        {"name": "카펫 바닥", "category": "FLOORING", "price": 100, "rarity": "RARE"},
+        {"name": "대리석 바닥", "category": "FLOORING", "price": 180, "rarity": "RARE"},
+
+        # --- FURNITURE: 가구 ---
+        {"name": "화분", "category": "FURNITURE", "price": 50, "rarity": "COMMON"},
+        {"name": "스탠드 조명", "category": "FURNITURE", "price": 70, "rarity": "COMMON"},
+        {"name": "책장", "category": "FURNITURE", "price": 140, "rarity": "COMMON"},
+        {"name": "소파", "category": "FURNITURE", "price": 190, "rarity": "RARE"},
+        {"name": "책상 & 의자 세트", "category": "FURNITURE", "price": 230, "rarity": "RARE"},
+        {"name": "침대", "category": "FURNITURE", "price": 300, "rarity": "RARE"},
+        {"name": "골드 프레임 침대", "category": "FURNITURE", "price": 1000, "rarity": "EPIC"},
+
+        # --- DECOR: 방을 채우는 작은 소품 ---
+        {"name": "액자", "category": "DECOR", "price": 25, "rarity": "COMMON"},
+        {"name": "캔들", "category": "DECOR", "price": 25, "rarity": "COMMON"},
+        {"name": "쿠션 세트", "category": "DECOR", "price": 50, "rarity": "COMMON"},
+        {"name": "벽시계", "category": "DECOR", "price": 60, "rarity": "COMMON"},
+        {"name": "미니 어항", "category": "DECOR", "price": 110, "rarity": "RARE"},
+
+        # --- THEME: 벽지+바닥+가구를 한 번에 바꾸는 프리미엄 풀세트 ---
+        {"name": "카페 감성 풀세트", "category": "THEME", "price": 1200, "rarity": "EPIC"},
+        {"name": "우주 테마 풀세트", "category": "THEME", "price": 1500, "rarity": "EPIC"},
     ]
 
     milestone_items = [
-        {"name": "첫 가구 세트", "category": "FURNITURE", "unlock_level": 5},
-        {"name": "은색 왕관", "category": "ACCESSORY", "unlock_level": 10},
-        {"name": "특별 커스텀 정장", "category": "SKIN", "unlock_level": 15},
-        {"name": "오로라 배경", "category": "BACKGROUND", "unlock_level": 20},
+        {"name": "첫 화분", "category": "FURNITURE", "unlock_level": 5},
+        {"name": "스페셜 벽지 조각", "category": "WALLPAPER", "unlock_level": 10},
+        {"name": "스페셜 바닥재 조각", "category": "FLOORING", "unlock_level": 15},
+        {"name": "프리미엄 소파", "category": "FURNITURE", "unlock_level": 20},
     ]
 
     for item in purchasable_items:
@@ -360,9 +290,7 @@ def run():
         seed_shop_items(session)
 
     print("🎉 전체 시드 데이터 삽입 완료!")
-    print(
-        f"   로그인 테스트: USERS_SEED에 등록된 이메일 / 비밀번호 '{DEFAULT_PASSWORD}'"
-    )
+    print(f"   로그인 테스트: USERS_SEED에 등록된 이메일 / 비밀번호 '{DEFAULT_PASSWORD}'")
 
 
 if __name__ == "__main__":
