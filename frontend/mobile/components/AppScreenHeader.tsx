@@ -1,19 +1,17 @@
-/**
- * 화면 상단 타이틀 영역 (라벨 + 제목 + 설명 + 아이콘).
- * 홈/소비/챌린지/리포트 등 각 탭 화면 맨 위에서 공통으로 쓰인다.
- */
-
 import type { LucideIcon } from 'lucide-react-native';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 
 type AppScreenHeaderProps = {
-  label: string;
+  label?: string;
   title: string;
   description?: string;
   Icon?: LucideIcon;
+  ActionIcon?: LucideIcon;
+  actionLabel?: string;
+  onActionPress?: () => void;
 };
 
 export function AppScreenHeader({
@@ -21,67 +19,94 @@ export function AppScreenHeader({
   title,
   description,
   Icon,
+  ActionIcon,
+  actionLabel,
+  onActionPress,
 }: AppScreenHeaderProps) {
   return (
     <View style={styles.container}>
-      <View style={styles.labelRow}>
-        {Icon ? (
-          <View style={styles.iconBox}>
-            <Icon size={17} color={colors.butterBrown} strokeWidth={2.6} />
-          </View>
+      <View style={styles.topRow}>
+        <View style={styles.copy}>
+          {label || Icon ? (
+            <View style={styles.labelRow}>
+              {Icon ? <Icon size={15} color={colors.butterDeep} strokeWidth={2.5} /> : null}
+              {label ? <Text style={styles.label}>{label}</Text> : null}
+            </View>
+          ) : null}
+
+          <Text style={styles.title}>{title}</Text>
+          {description ? <Text style={styles.description}>{description}</Text> : null}
+        </View>
+
+        {ActionIcon && onActionPress ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
+            onPress={onActionPress}
+            style={({ pressed }) => [
+              styles.actionButton,
+              pressed && styles.actionButtonPressed,
+            ]}
+          >
+            <ActionIcon size={20} color={colors.text} strokeWidth={2.4} />
+          </Pressable>
         ) : null}
-
-        <Text style={styles.label}>{label}</Text>
       </View>
-
-      <Text style={styles.title}>{title}</Text>
-
-      {description ? (
-        <Text style={styles.description}>{description}</Text>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 18,
-    paddingTop: 4,
+    marginBottom: 22,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  copy: {
+    flex: 1,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  iconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
-    backgroundColor: colors.butterPale,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 7,
   },
   label: {
     fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.butterDeep,
+    letterSpacing: 0.7,
   },
   title: {
     fontFamily: typography.fontFamily,
-    fontSize: 26,
+    fontSize: 27,
     lineHeight: 34,
     fontWeight: '900',
+    letterSpacing: -0.8,
     color: colors.text,
-    letterSpacing: -0.7,
   },
   description: {
-    marginTop: 8,
+    marginTop: 7,
     fontFamily: typography.fontFamily,
     fontSize: 14,
     lineHeight: 21,
     color: colors.subText,
+  },
+  actionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonPressed: {
+    opacity: 0.68,
   },
 });

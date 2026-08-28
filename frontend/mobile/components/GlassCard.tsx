@@ -1,13 +1,6 @@
-/**
- * 반투명 글래스모피즘 카드 컨테이너.
- * 마운트 시 fade-in + slide-up 애니메이션이 적용된다.
- * tone으로 배경 톤(default/soft/butter)을 조절한다.
- */
-
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { Animated, Easing, StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { colors } from '@/constants/colors';
 
@@ -18,49 +11,27 @@ type GlassCardProps = {
   style?: StyleProp<ViewStyle>;
 };
 
+/**
+ * Compatibility wrapper for existing screens.
+ * The visual style is intentionally no longer glassmorphism:
+ * Moni now uses simple white surfaces with subtle borders.
+ */
 export function GlassCard({
   children,
-  delay = 0,
   tone = 'default',
   style,
 }: GlassCardProps) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(14)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 420,
-        delay,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 420,
-        delay,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [delay, opacity, translateY]);
-
   return (
-    <Animated.View
+    <View
       style={[
         styles.card,
         tone === 'soft' && styles.softCard,
         tone === 'butter' && styles.butterCard,
-        {
-          opacity,
-          transform: [{ translateY }],
-        },
         style,
       ]}
     >
       {children}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -78,8 +49,8 @@ const styles = StyleSheet.create({
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
+    shadowOpacity: 0.035,
+    shadowRadius: 10,
     elevation: 1,
   },
   softCard: {
@@ -87,6 +58,6 @@ const styles = StyleSheet.create({
   },
   butterCard: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
+    borderColor: colors.butterSoft,
   },
 });

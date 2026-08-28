@@ -3,7 +3,6 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
-import { MissionProvider } from '@/contexts/MissionContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 
 SplashScreen.preventAutoHideAsync();
@@ -24,22 +23,22 @@ export default function RootLayout() {
   }
 
   return (
-    <MissionProvider>
-      <ToastProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: {
-              backgroundColor: '#FFF8E7',
-            },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="auth/login" />
-          <Stack.Screen name="auth/signup" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-      </ToastProvider>
-    </MissionProvider>
+    <ToastProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: {
+            backgroundColor: '#FCFCFB',
+          },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="auth/login" />
+        <Stack.Screen name="auth/signup" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="shop" />
+        <Stack.Screen name="inventory" />
+      </Stack>
+    </ToastProvider>
   );
 }
