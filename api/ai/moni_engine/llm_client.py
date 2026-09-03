@@ -128,6 +128,8 @@ def generate_challenge_text(
 
         return {"challenge_text": text, "text_source": "llm"}
 
-    except Exception:
-        # 네트워크/인증/타임아웃 등 모든 실패 → 폴백
+    except Exception as e:
+        import traceback
+        print(f"[LLM 폴백 발생] {type(e).__name__}: {e}")
+        traceback.print_exc()
         return fallback
