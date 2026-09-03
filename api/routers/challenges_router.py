@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends
@@ -15,7 +15,11 @@ from services.leveling import (
     calculate_level_from_xp,
     reverse_challenge_completion,
 )
-from services.challenge_stats_service import get_weekly_completed_count, get_current_streak
+from services.challenge_stats_service import (
+    get_weekly_completed_count,
+    get_current_streak,
+    get_category_stats,
+)
 from moni_engine.engine import get_today_challenges
 
 router = APIRouter()
@@ -36,6 +40,40 @@ def get_challenge_stats_api(
             "data": {
                 "weekly": weekly,
                 "streak": streak,
+            },
+        }
+
+
+# [챌린지 통계] 카테고리별 생성/달성 개수 (AI 팀 요청용)
+# 기본은 '이번 주'만 집계 (매주 자동 리셋). period=all 이면 전체 누적.
+@router.get("/challenges/stats/by-category")
+def get_challenge_stats_by_category_api(
+    period: str = "week",  # "week" | "all"
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    user_id: str = Depends(get_current_user_id),
+):
+    if period not in ("week", "all"):
+        raise HTTPException(status_code=400, detail="period는 'week' 또는 'all'이어야 합니다")
+
+    with Session(engine) as session:
+        # start_date/end_date를 직접 넘기면 그게 우선, 안 넘기면 period 기준으로 자동 계산
+        if start_date is None and end_date is None and period == "week":
+            today = date.today()
+            start_date = today - timedelta(days=today.weekday())  # 이번 주 월요일
+            end_date = start_date + timedelta(days=6)              # 이번 주 일요일
+
+        category_stats = get_category_stats(
+            session, user_id, start_date=start_date, end_date=end_date
+        )
+
+        return {
+            "status": "success",
+            "data": {
+                "period": period,
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "categories": category_stats,
             },
         }
 
