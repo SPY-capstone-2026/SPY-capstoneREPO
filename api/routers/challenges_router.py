@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select
@@ -14,9 +15,29 @@ from services.leveling import (
     calculate_level_from_xp,
     reverse_challenge_completion,
 )
+from services.challenge_stats_service import get_weekly_completed_count, get_current_streak
 from moni_engine.engine import get_today_challenges
 
 router = APIRouter()
+
+
+# [챌린지 통계] 주간 달성 개수 + 연속 달성일(스트릭)
+@router.get("/challenges/stats")
+def get_challenge_stats_api(
+    category_name: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+):
+    with Session(engine) as session:
+        weekly = get_weekly_completed_count(session, user_id)
+        streak = get_current_streak(session, user_id, category_name=category_name)
+
+        return {
+            "status": "success",
+            "data": {
+                "weekly": weekly,
+                "streak": streak,
+            },
+        }
 
 
 @router.get("/challenges/today")
@@ -151,6 +172,7 @@ def update_challenge_status_api(
             level_result = process_challenge_completion(session, user, challenge.xp_reward)
             # 완료 시점의 지급 내역을 챌린지에 스냅샷으로 저장 (취소 시 정확히 회수하기 위함)
             challenge.reward_snapshot = level_result
+            challenge.completed_at = datetime.now()  # 스트릭/주간 통계용 완료 시각 기록
             session.add(challenge)
             session.commit()
             session.refresh(challenge)
@@ -159,6 +181,7 @@ def update_challenge_status_api(
             # 챌린지 완료 취소 → 스냅샷 기준으로 XP + 포인트 + 마일스톤 아이템 전부 회수
             reversal_result = reverse_challenge_completion(session, user, challenge)
             challenge.reward_snapshot = None  # 회수 완료했으니 스냅샷 제거
+            challenge.completed_at = None  # 완료 취소했으니 완료 시각도 초기화
             session.add(challenge)
             session.commit()
             session.refresh(challenge)
