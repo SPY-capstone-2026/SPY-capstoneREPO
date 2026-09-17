@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   ClipboardCheck,
@@ -26,6 +27,7 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useToast } from '@/contexts/ToastContext';
 import { getCurrentUser } from '@/services/authService';
+import { getPrimaryBudgetGuide } from '@/services/budgetGuide';
 import {
   getTodayChallengesFromApi,
   updateChallengeStatusFromApi,
@@ -54,6 +56,8 @@ function getMetadata(challenge: ApiChallenge): ChallengeAiMetadata {
 type CompletionFeedback = {
   challenge: ApiChallenge;
   levelResult: LevelResult | null;
+  pointsEarned: number;
+  currentPoints: number;
 };
 
 export default function ChallengeScreen() {
@@ -100,6 +104,10 @@ export default function ChallengeScreen() {
     () => challenges.find((challenge) => challenge.status === 'PENDING') ?? challenges[0] ?? null,
     [challenges]
   );
+  const budgetGuide = useMemo(
+    () => getPrimaryBudgetGuide(challenges),
+    [challenges]
+  );
   const progress = challenges.length > 0 ? completedCount / challenges.length : 0;
 
   const loadChallenges = useCallback(async () => {
@@ -131,6 +139,7 @@ export default function ChallengeScreen() {
     if (updatingId !== null || challenge.status === 'FAILED') return;
 
     const nextStatus = challenge.status === 'SUCCESS' ? 'PENDING' : 'SUCCESS';
+    const previousPoints = user?.current_points ?? 0;
 
     try {
       setUpdatingId(challenge.challenge_id);
@@ -159,6 +168,11 @@ export default function ChallengeScreen() {
         setFeedback({
           challenge: result.challenge,
           levelResult: result.levelResult,
+          pointsEarned: Math.max(
+            0,
+            result.userProgress.current_points - previousPoints
+          ),
+          currentPoints: result.userProgress.current_points,
         });
       } else {
         setFeedback(null);
@@ -200,11 +214,40 @@ export default function ChallengeScreen() {
               style={styles.fixedMascotMotion}
             />
           </View>
-          <View style={styles.speechBubble}>
-            <View style={styles.speechTail} />
-            <Text style={styles.speechLabel}>Moni가 추천해요</Text>
-            <Text style={styles.speechText} numberOfLines={3}>
-              {pendingChallenge?.challenge_text ?? '오늘의 소비 기록을 바탕으로 챌린지를 준비하고 있어요.'}
+          <View
+            style={[
+              styles.speechBubble,
+              budgetGuide && styles.speechBubbleWarning,
+            ]}
+          >
+            <View
+              style={[
+                styles.speechTail,
+                budgetGuide && styles.speechTailWarning,
+              ]}
+            />
+            <View style={styles.speechLabelRow}>
+              {budgetGuide ? (
+                <AlertTriangle
+                  size={14}
+                  color={colors.warningText}
+                  strokeWidth={2.5}
+                />
+              ) : null}
+              <Text
+                style={[
+                  styles.speechLabel,
+                  budgetGuide && styles.speechLabelWarning,
+                ]}
+              >
+                {budgetGuide ? '예산을 먼저 확인해요' : 'Moni가 추천해요'}
+              </Text>
+            </View>
+            <Text style={styles.speechText} numberOfLines={4}>
+              {budgetGuide
+                ? `${budgetGuide.categoryName} 예산을 이미 ${formatWon(budgetGuide.overAmount)} 넘었어요. 오늘은 챌린지보다 예산을 먼저 다시 확인해 주세요.`
+                : pendingChallenge?.challenge_text ??
+                  '오늘의 소비 기록을 바탕으로 챌린지를 준비하고 있어요.'}
             </Text>
           </View>
         </View>
@@ -250,6 +293,26 @@ export default function ChallengeScreen() {
             </Text>
           </View>
         </View>
+
+        {budgetGuide ? (
+          <View style={styles.budgetNoticeCard}>
+            <View style={styles.budgetNoticeIcon}>
+              <AlertTriangle
+                size={19}
+                color={colors.warningText}
+                strokeWidth={2.5}
+              />
+            </View>
+            <View style={styles.budgetNoticeCopy}>
+              <Text style={styles.budgetNoticeTitle}>
+                {budgetGuide.categoryName} 예산을 초과했어요
+              </Text>
+              <Text style={styles.budgetNoticeText}>
+                현재 예산보다 {formatWon(budgetGuide.overAmount)} 더 사용했어요. 이 카테고리는 새 챌린지를 수행하기보다 이번 달 예산과 남은 지출 계획을 먼저 다시 설정해 주세요.
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>오늘의 챌린지</Text>
@@ -407,6 +470,16 @@ export default function ChallengeScreen() {
               +{feedback?.challenge.xp_reward ?? 0} XP가 반영됐어요.
             </Text>
 
+            <View style={styles.rewardSummaryBox}>
+              <Text style={styles.rewardSummaryLabel}>현재 보상 상태</Text>
+              <Text style={styles.rewardSummaryValue}>
+                {feedback?.currentPoints ?? user?.current_points ?? 0}P 보유
+                {feedback && feedback.pointsEarned > 0
+                  ? ` · 이번 완료 +${feedback.pointsEarned}P`
+                  : ''}
+              </Text>
+            </View>
+
             {feedback?.levelResult?.leveled_up ? (
               <View style={styles.levelUpBox}>
                 <Text style={styles.levelUpTitle}>
@@ -421,9 +494,7 @@ export default function ChallengeScreen() {
                   </Text>
                 ) : null}
               </View>
-            ) : (
-              <Text style={styles.pointsText}>현재 {user?.current_points ?? 0}P 보유</Text>
-            )}
+            ) : null}
 
             <Pressable style={styles.modalButton} onPress={() => setFeedback(null)}>
               <Text style={styles.modalButtonText}>확인</Text>
@@ -449,12 +520,16 @@ const styles = StyleSheet.create({
     flex: 1, minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.surface, padding: 15, justifyContent: 'center', position: 'relative',
   },
+  speechBubbleWarning: { backgroundColor: colors.warningBg, borderColor: '#F0D4A5' },
   speechTail: {
     position: 'absolute', left: -7, top: 44, width: 14, height: 14,
     backgroundColor: colors.surface, borderLeftWidth: 1, borderBottomWidth: 1,
     borderColor: colors.border, transform: [{ rotate: '45deg' }],
   },
-  speechLabel: { fontFamily: typography.fontFamily, fontSize: 10.5, fontWeight: '900', color: colors.butterDeep, marginBottom: 5 },
+  speechTailWarning: { backgroundColor: colors.warningBg, borderColor: '#F0D4A5' },
+  speechLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
+  speechLabel: { fontFamily: typography.fontFamily, fontSize: 10.5, fontWeight: '900', color: colors.butterDeep },
+  speechLabelWarning: { color: colors.warningText },
   speechText: { fontFamily: typography.fontFamily, fontSize: 14.5, lineHeight: 20, fontWeight: '800', color: colors.text },
   summaryCard: { padding: 18, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: 22 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
@@ -470,6 +545,11 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '900', color: colors.text },
   policyNote: { marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: colors.borderSoft, flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
   policyNoteText: { flex: 1, fontFamily: typography.fontFamily, fontSize: 11.5, lineHeight: 17, color: colors.subText },
+  budgetNoticeCard: { marginBottom: 18, borderRadius: 18, borderWidth: 1, borderColor: '#F0D4A5', backgroundColor: colors.warningBg, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
+  budgetNoticeIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFF0D0', alignItems: 'center', justifyContent: 'center' },
+  budgetNoticeCopy: { flex: 1 },
+  budgetNoticeTitle: { fontFamily: typography.fontFamily, fontSize: 13.5, fontWeight: '900', color: colors.warningText },
+  budgetNoticeText: { marginTop: 4, fontFamily: typography.fontFamily, fontSize: 11.5, lineHeight: 17, color: colors.subText },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: 19, fontWeight: '900', color: colors.text },
   sectionMeta: { fontFamily: typography.fontFamily, fontSize: 11.5, fontWeight: '800', color: colors.mutedText },
@@ -515,6 +595,9 @@ const styles = StyleSheet.create({
   modalCard: { alignSelf: 'center', width: '100%', maxWidth: 390, borderRadius: 24, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: 22, alignItems: 'center' },
   modalTitle: { marginTop: 2, fontFamily: typography.fontFamily, fontSize: 22, fontWeight: '900', color: colors.text },
   modalDescription: { marginTop: 5, fontFamily: typography.fontFamily, fontSize: 13, color: colors.subText },
+  rewardSummaryBox: { width: '100%', marginTop: 15, borderRadius: 15, backgroundColor: colors.surfaceMuted, padding: 12, alignItems: 'center' },
+  rewardSummaryLabel: { fontFamily: typography.fontFamily, fontSize: 10, fontWeight: '800', color: colors.mutedText },
+  rewardSummaryValue: { marginTop: 4, fontFamily: typography.fontFamily, fontSize: 13.5, fontWeight: '900', color: colors.text },
   levelUpBox: { width: '100%', marginTop: 16, borderRadius: 16, backgroundColor: colors.butterPale, padding: 14, alignItems: 'center' },
   levelUpTitle: { fontFamily: typography.fontFamily, fontSize: 17, fontWeight: '900', color: colors.text },
   levelUpText: { marginTop: 4, fontFamily: typography.fontFamily, fontSize: 12, lineHeight: 18, fontWeight: '700', color: colors.subText, textAlign: 'center' },

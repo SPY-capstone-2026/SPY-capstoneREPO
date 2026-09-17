@@ -58,6 +58,18 @@ export const ROOM_FURNITURE_LAYOUT: Record<
     width: 154,
     height: 104,
   },
+  '낮은 테이블': {
+    left: 118,
+    bottom: 14,
+    width: 112,
+    height: 72,
+  },
+  '쿠션 의자': {
+    right: 86,
+    bottom: 16,
+    width: 94,
+    height: 86,
+  },
 };
 
 export const ROOM_DECOR_LAYOUT: Record<
@@ -93,6 +105,18 @@ export const ROOM_DECOR_LAYOUT: Record<
     bottom: 17,
     width: 74,
     height: 62,
+  },
+  '별 조명': {
+    right: 28,
+    top: 48,
+    width: 60,
+    height: 78,
+  },
+  '책 더미': {
+    left: 88,
+    bottom: 18,
+    width: 60,
+    height: 50,
   },
 };
 

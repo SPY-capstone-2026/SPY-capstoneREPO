@@ -32,6 +32,7 @@ import {
   SHOP_CATEGORY_ORDER,
   getShopCategoryLabel,
   getShopItemEffect,
+  isVisibleShopItemName,
 } from '@/services/shopCatalog';
 import {
   getInventoryFromApi,
@@ -59,7 +60,12 @@ export default function ShopScreen() {
   );
 
   const purchasableItems = useMemo(
-    () => items.filter((item) => item.is_purchasable),
+    () =>
+      items.filter(
+        (item) =>
+          item.is_purchasable &&
+          isVisibleShopItemName(item.name)
+      ),
     [items]
   );
 
@@ -74,7 +80,12 @@ export default function ShopScreen() {
   );
 
   const milestoneItems = useMemo(
-    () => items.filter((item) => !item.is_purchasable),
+    () =>
+      items.filter(
+        (item) =>
+          !item.is_purchasable &&
+          isVisibleShopItemName(item.name)
+      ),
     [items]
   );
 
@@ -161,6 +172,8 @@ export default function ShopScreen() {
 
       const result = await purchaseShopItemFromApi(item.item_id);
 
+      // 구매 응답을 먼저 반영해 체감 지연을 줄이고, 곧바로 서버 상태를 재조회해
+      // 포인트/인벤토리가 실제로 저장됐는지 다시 맞춥니다.
       setUser((current) =>
         current
           ? {
@@ -170,8 +183,21 @@ export default function ShopScreen() {
           : current
       );
 
-      const nextInventory = await getInventoryFromApi();
+      const [nextInventory, refreshedUser] = await Promise.all([
+        getInventoryFromApi(),
+        getCurrentUser(),
+      ]);
+
       setInventory(nextInventory);
+      setUser(refreshedUser);
+
+      const purchased = nextInventory.some(
+        (entry) => entry.item_id === item.item_id
+      );
+
+      if (!purchased && !item.is_repeatable) {
+        throw new Error('구매는 처리됐지만 보유 아이템 저장 상태를 확인하지 못했어요.');
+      }
 
       showToast(`${item.name} 아이템을 구매했어요.`);
       setSelectedItem(null);
