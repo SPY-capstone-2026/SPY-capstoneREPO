@@ -170,5 +170,14 @@ class GeneratedReport(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
 
+class BudgetChangeLog(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    category_name: str
+    old_limit: int
+    new_limit: int
+    changed_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)

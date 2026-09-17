@@ -91,7 +91,7 @@ def get_category_stats(
     end_date: Optional[date] = None,
 ) -> list:
     """
-    카테고리별 [생성된 챌린지 개수 / 달성(SUCCESS)한 개수 / 달성률] 집계.
+    카테고리별 [생성된 챌린지 개수 / 달성(SUCCESS)한 개수 / 달성률 / 획득 XP] 집계.
     start_date~end_date 안 주면 전체 기간 기준.
     (데이터가 유저당 수백 건 수준이라 SQL GROUP BY 대신 파이썬에서 바로 집계)
     """
@@ -104,12 +104,13 @@ def get_category_stats(
 
     challenges = session.exec(query).all()
 
-    counts = defaultdict(lambda: {"total_count": 0, "completed_count": 0})
+    counts = defaultdict(lambda: {"total_count": 0, "completed_count": 0, "xp_earned": 0})
 
     for challenge in challenges:
         counts[challenge.category_name]["total_count"] += 1
         if challenge.status == "SUCCESS":
             counts[challenge.category_name]["completed_count"] += 1
+            counts[challenge.category_name]["xp_earned"] += challenge.xp_reward
 
     result = []
     for category_name, c in counts.items():
@@ -120,7 +121,29 @@ def get_category_stats(
             "total_count": total,
             "completed_count": completed,
             "completion_rate": round(completed / total, 4) if total > 0 else 0,
+            "xp_earned": c["xp_earned"],
         })
 
     result.sort(key=lambda item: item["category_name"])
     return result
+
+
+def get_total_xp_earned(
+    session: Session,
+    user_id: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+) -> int:
+    """기간 내 획득한 총 XP (카테고리 구분 없이 합계). 리포트 상단 요약용."""
+    query = (
+        select(DailyChallenge.xp_reward)
+        .where(DailyChallenge.user_id == user_id)
+        .where(DailyChallenge.status == "SUCCESS")
+    )
+
+    if start_date:
+        query = query.where(DailyChallenge.challenge_date >= start_date)
+    if end_date:
+        query = query.where(DailyChallenge.challenge_date <= end_date)
+
+    return sum(session.exec(query).all())
