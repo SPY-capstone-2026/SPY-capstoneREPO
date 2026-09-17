@@ -6,6 +6,7 @@ from models import engine, User, Transaction
 from auth import get_current_user_id
 from schemas import TransactionCreateRequest, TransactionUpdateRequest
 from serializers import serialize_transaction
+from services.report_cache_service import invalidate_reports_containing_date
 
 router = APIRouter()
 
@@ -59,6 +60,9 @@ def create_transaction_api(
         session.commit()
         session.refresh(transaction)
 
+        # 이 거래 날짜가 포함된 캐싱된 리포트가 있으면 무효화 (다음 조회 시 재계산)
+        invalidate_reports_containing_date(session, user_id, transaction.tx_date)
+
         return {
             "status": "success",
             "data": serialize_transaction(transaction),
@@ -79,6 +83,8 @@ def update_transaction_api(
 
         if transaction.user_id != user_id:
             raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
+
+        original_tx_date = transaction.tx_date  # 날짜가 바뀔 경우 이전 날짜도 무효화하기 위해 미리 저장
 
         if req.tx_date is not None:
             try:
@@ -123,6 +129,11 @@ def update_transaction_api(
         session.commit()
         session.refresh(transaction)
 
+        # 날짜가 바뀐 경우 이전 날짜, 새 날짜 둘 다 캐시 무효화
+        invalidate_reports_containing_date(session, user_id, original_tx_date)
+        if transaction.tx_date != original_tx_date:
+            invalidate_reports_containing_date(session, user_id, transaction.tx_date)
+
         return {
             "status": "success",
             "data": serialize_transaction(transaction),
@@ -143,8 +154,13 @@ def delete_transaction_api(
         if transaction.user_id != user_id:
             raise HTTPException(status_code=403, detail="삭제 권한이 없습니다")
 
+        tx_date = transaction.tx_date  # 삭제 전에 날짜 확보 (무효화에 필요)
+
         session.delete(transaction)
         session.commit()
+
+        # 이 거래가 있던 날짜가 포함된 캐싱된 리포트가 있으면 무효화
+        invalidate_reports_containing_date(session, user_id, tx_date)
 
         return {
             "status": "success",
