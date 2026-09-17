@@ -15,6 +15,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Ellipse, G, Path } from 'react-native-svg';
 
+import { getMascotAccessoryRenderStyle } from '@/constants/mascotAccessories';
+
 export type MascotState = 'idle' | 'walking' | 'celebrate' | 'sleep';
 
 export type MascotMotionController = {
@@ -199,45 +201,7 @@ export function MoniMascot({
       }),
   );
 
-  const accessoryLayout = (() => {
-    switch (accessoryName) {
-      case '리본':
-        return {
-          left: size * 0.36,
-          top: size * 0.52,
-          width: size * 0.30,
-          height: size * 0.23,
-        };
-      case '머리핀':
-        return {
-          left: size * 0.12,
-          top: size * 0.07,
-          width: size * 0.22,
-          height: size * 0.18,
-        };
-      case '미니 모자':
-        return {
-          left: size * 0.23,
-          top: -size * 0.04,
-          width: size * 0.32,
-          height: size * 0.26,
-        };
-      case '왕관':
-        return {
-          left: size * 0.24,
-          top: -size * 0.07,
-          width: size * 0.31,
-          height: size * 0.27,
-        };
-      default:
-        return {
-          left: size * 0.24,
-          top: size * 0.02,
-          width: size * 0.28,
-          height: size * 0.24,
-        };
-    }
-  })();
+  const accessoryLayout = getMascotAccessoryRenderStyle(accessoryName, size);
 
   return (
     <Pressable
@@ -335,11 +299,13 @@ export function MoniMascot({
         </Svg>
 
         {accessorySource ? (
-          <Image
-            source={accessorySource}
-            resizeMode="contain"
-            style={[styles.accessory, accessoryLayout]}
-          />
+          <View style={[styles.accessoryClip, accessoryLayout.frame]}>
+            <Image
+              source={accessorySource}
+              resizeMode="cover"
+              style={[styles.accessoryImage, accessoryLayout.image]}
+            />
+          </View>
         ) : null}
       </View>
     </Pressable>
@@ -351,8 +317,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'visible',
   },
-  accessory: {
+  accessoryClip: {
     position: 'absolute',
+    overflow: 'hidden',
     zIndex: 10,
+  },
+  accessoryImage: {
+    position: 'absolute',
   },
 });

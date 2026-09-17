@@ -21,12 +21,12 @@ import { useToast } from '@/contexts/ToastContext';
 import {
   SHOP_CATEGORY_LABELS,
   SHOP_CATEGORY_ORDER,
-  getEquipConflictCategories,
   getShopItemEffect,
+  isVisibleShopItemName,
 } from '@/services/shopCatalog';
 import {
   getInventoryFromApi,
-  setInventoryEquippedFromApi,
+  setInventoryEquippedSafely,
 } from '@/services/shopService';
 import type { InventoryItem } from '@/types/api';
 
@@ -37,23 +37,31 @@ export default function InventoryScreen() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  const availableInventory = useMemo(
+    () =>
+      inventory.filter((entry) =>
+        isVisibleShopItemName(entry.item?.name)
+      ),
+    [inventory]
+  );
+
   const categories = useMemo(
     () =>
       SHOP_CATEGORY_ORDER.filter(
         (category) =>
           category === 'ALL' ||
-          inventory.some(
+          availableInventory.some(
             (entry) => entry.item?.category === category
           )
       ),
-    [inventory]
+    [availableInventory]
   );
 
   const visibleInventory = useMemo(() => {
     const filtered =
       selectedCategory === 'ALL'
-        ? inventory
-        : inventory.filter(
+        ? availableInventory
+        : availableInventory.filter(
             (entry) => entry.item?.category === selectedCategory
           );
 
@@ -64,11 +72,12 @@ export default function InventoryScreen() {
 
       return (b.acquired_at ?? '').localeCompare(a.acquired_at ?? '');
     });
-  }, [inventory, selectedCategory]);
+  }, [availableInventory, selectedCategory]);
 
   const equippedCount = useMemo(
-    () => inventory.filter((entry) => entry.is_equipped).length,
-    [inventory]
+    () =>
+      availableInventory.filter((entry) => entry.is_equipped).length,
+    [availableInventory]
   );
 
   const loadInventory = useCallback(async () => {
@@ -96,41 +105,23 @@ export default function InventoryScreen() {
     try {
       setUpdatingId(entry.item_id);
 
-      if (nextEquip) {
-        const conflictCategories =
-          getEquipConflictCategories(item.category);
-
-        if (conflictCategories.size > 0) {
-          const conflicts = inventory.filter(
-            (candidate) =>
-              candidate.is_equipped &&
-              candidate.item_id !== entry.item_id &&
-              candidate.item &&
-              conflictCategories.has(candidate.item.category)
-          );
-
-          for (const conflict of conflicts) {
-            await setInventoryEquippedFromApi(
-              conflict.item_id,
-              false
-            );
-          }
-        }
-      }
-
-      await setInventoryEquippedFromApi(
+      const verifiedInventory = await setInventoryEquippedSafely(
         entry.item_id,
+        item.category,
         nextEquip
       );
 
-      await loadInventory();
+      // 서버에서 재조회한 검증 결과만 화면 상태로 사용합니다.
+      setInventory(verifiedInventory);
 
       showToast(
         nextEquip
-          ? `${item.name} 아이템을 적용했어요.`
+          ? `${item.name} 아이템을 적용했고 저장 상태도 확인했어요.`
           : `${item.name} 아이템을 해제했어요.`
       );
     } catch (error) {
+      // 중간 실패가 있더라도 서버의 최종 상태를 다시 읽어 UI와 맞춥니다.
+      await loadInventory();
       showToast(
         error instanceof Error
           ? error.message
