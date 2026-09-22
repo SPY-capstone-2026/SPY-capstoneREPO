@@ -14,6 +14,7 @@ from services.reports_service import (
     build_evaluated_categories,
     build_weekly_category_comparison,
     build_category_overrun_info,
+    build_weekly_breakdown,
 )
 from services.report_cache_service import get_or_generate_report
 from services.challenge_stats_service import get_total_xp_earned
@@ -104,7 +105,10 @@ def get_weekly_report_api(
 
 
 @router.get("/reports/monthly")
-def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
+def get_monthly_report_api(
+    target_date: Optional[date] = None,
+    user_id: str = Depends(get_current_user_id),
+):
     with Session(engine) as session:
         user = session.get(User, user_id)
 
@@ -112,7 +116,17 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
         today = date.today()
-        first_day, last_day = get_month_date_range(today)
+        ref_date = target_date or today
+        first_day, last_day = get_month_date_range(ref_date)
+
+        if first_day > today:
+            raise HTTPException(status_code=400, detail="미래 월은 조회할 수 없습니다")
+
+        is_current_month = (first_day.year == today.year and first_day.month == today.month)
+        # 진행 중인 달이면 실제 '오늘'을 기준으로 남은 기간을 예측하고,
+        # 이미 끝난 달이면 그 달의 마지막 날을 기준으로 삼아서(=경과일수와 총일수가 같아짐)
+        # 예측 계산이 자연스럽게 '실제 총합 그대로'가 되도록 함 (별도 분기 없이 처리)
+        reference_day = today if is_current_month else last_day
 
         def build_report():
             category_settings = ensure_default_category_settings(session, user_id)
@@ -126,7 +140,7 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
 
             total_spend = sum(transaction.amount for transaction in monthly_transactions)
             total_budget = sum(category.budget_limit for category in category_settings)
-            predicted_monthly_spend = calculate_projected_amount(total_spend, today)
+            predicted_monthly_spend = calculate_projected_amount(total_spend, reference_day)
 
             if total_budget > 0:
                 budget_pressure = predicted_monthly_spend / total_budget
@@ -136,7 +150,7 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
             evaluated_categories = build_evaluated_categories(
                 category_settings=category_settings,
                 monthly_transactions=monthly_transactions,
-                today=today,
+                today=reference_day,
             )
 
             weekly_trend = get_weekly_trend(monthly_transactions)
@@ -150,8 +164,15 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
                 period_end=last_day,
             )
 
+            weekly_breakdown = build_weekly_breakdown(
+                transactions=monthly_transactions,
+                period_start=first_day,
+                period_end=last_day,
+            )
+
             return {
                 "month": first_day.strftime("%Y-%m"),
+                "is_current_month": is_current_month,
                 "monthly_summary": {
                     "total_spend": total_spend,
                     "budget_limit": total_budget,
@@ -161,11 +182,12 @@ def get_monthly_report_api(user_id: str = Depends(get_current_user_id)):
                     "xp_earned": xp_earned_this_month,
                 },
                 "weekly_trend": weekly_trend,
+                "weekly_breakdown": weekly_breakdown,
                 "evaluated_categories": evaluated_categories,
                 "category_overrun": category_overrun,
             }
 
-        # 이번 달(진행 중)이면 항상 라이브 계산, 지난달(끝난 기간)이면 캐시 우선 조회
+        # 요청한 달이 이미 끝났으면 캐시 우선 조회, 진행 중인 달(이번 달)이면 항상 라이브 계산
         report_data = get_or_generate_report(
             session=session,
             user_id=user_id,

@@ -166,3 +166,36 @@ def build_evaluated_categories(category_settings, monthly_transactions, today: d
         item["rank"] = index
 
     return evaluated
+
+
+def build_weekly_breakdown(transactions, period_start: date, period_end: date):
+    """
+    월 안에서 월요일 시작 기준 주차별(1주차/2주차...) 소비 합계.
+    get_weekly_trend(요일별 패턴)와는 다른 개념 - 이건 시간 흐름에 따른 주차별 추이.
+    월 경계를 넘어가는 주는 그 달에 속한 날짜만 집계한다 (예: 1일이 화요일이면
+    1주차는 화~일 5일치만 포함).
+    """
+    amount_by_date = defaultdict(int)
+    for transaction in transactions:
+        amount_by_date[transaction.tx_date] += transaction.amount
+
+    amount_by_week_start = defaultdict(int)
+    current = period_start
+    while current <= period_end:
+        week_start = current - timedelta(days=current.weekday())
+        amount_by_week_start[week_start] += amount_by_date.get(current, 0)
+        current += timedelta(days=1)
+
+    sorted_weeks = sorted(amount_by_week_start.items())
+
+    result = []
+    for index, (week_start, amount) in enumerate(sorted_weeks, start=1):
+        week_end = week_start + timedelta(days=6)
+        result.append({
+            "week_label": f"{index}주차",
+            "week_start": week_start.isoformat(),
+            "week_end": week_end.isoformat(),
+            "amount": amount,
+        })
+
+    return result
