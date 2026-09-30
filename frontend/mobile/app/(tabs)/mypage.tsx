@@ -1,9 +1,19 @@
+import { useCallback, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { deleteAccessToken } from '@/services/tokenStorage';
-import { getCurrentUser, updateCurrentUser, } from '@/services/authService';
-import type { MeResponse } from '@/types/api';
 import {
+  Bell,
+  ChevronRight,
+  CreditCard,
+  LogOut,
+  Pencil,
+  Settings,
+  ShieldCheck,
+  Target,
+  UserRound,
+  WalletCards,
+} from 'lucide-react-native';
+import {
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,990 +22,933 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {
-  Bell,
-  ChevronRight,
-  CreditCard,
-  LogOut,
-  PiggyBank,
-  Settings,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  Trophy,
-  UserRound,
-} from 'lucide-react-native';
-import { useCallback, useState } from 'react';
 
-import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
-import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import {
-  mockCategorySettings,
-  mockUserProfile,
-} from '@/constants/mockAiResult';
-import { useMission } from '@/contexts/MissionContext';
 import { useToast } from '@/contexts/ToastContext';
+import { getCurrentUser, updateCurrentUser } from '@/services/authService';
+import { getCategoriesFromApi } from '@/services/categoryService';
+import {
+  DEFAULT_APP_PREFERENCES,
+  getAppPreferences,
+  saveAppPreferences,
+  type AppPreferences,
+} from '@/services/preferenceStorage';
+import { deleteAccessToken } from '@/services/tokenStorage';
+import type { MeResponse } from '@/types/api';
 
-function getIncomeTypeLabel(incomeType: string) {
-  if (incomeType === 'STUDENT') return '학생';
-  if (incomeType === 'EMPLOYEE') return '직장인';
-  if (incomeType === 'FREELANCER') return '프리랜서';
-  return '기타';
+const emptyUser: MeResponse = {
+  user_id: '',
+  email: '',
+  income_type: 'STUDENT',
+  payday: 25,
+  spend_profile: 'STEADY',
+  total_xp: 0,
+  current_level: 1,
+  current_points: 0,
+  created_at: null,
+};
+
+const INCOME_TYPES = [
+  ['STUDENT', '학생'],
+  ['EMPLOYEE', '직장인'],
+  ['FREELANCER', '프리랜서'],
+  ['OTHER', '기타'],
+] as const;
+
+const SPEND_PROFILES = [
+  ['STEADY', '안정형'],
+  ['IMPULSIVE', '즉흥 소비형'],
+  ['CYCLICAL', '주기 소비형'],
+] as const;
+
+function getIncomeTypeLabel(value: string) {
+  return INCOME_TYPES.find(([key]) => key === value)?.[1] ?? '기타';
 }
 
-function getSpendProfileLabel(profile: string) {
-  if (profile === 'STEADY') return '안정형';
-  if (profile === 'IMPULSIVE') return '즉흥 소비형';
-  if (profile === 'CYCLICAL') return '주기 소비형';
-  return '맞춤형';
+function getSpendProfileLabel(value: string) {
+  return SPEND_PROFILES.find(([key]) => key === value)?.[1] ?? '맞춤형';
 }
 
-function getProfileMessage(profile: string) {
-  if (profile === 'IMPULSIVE') {
-    return '작은 미션으로 갑작스러운 소비를 천천히 줄여볼 수 있어요.';
-  }
+function xpRequiredForLevel(level: number) {
+  return 30 + 10 * Math.max(0, level - 1);
+}
 
-  if (profile === 'CYCLICAL') {
-    return '소비가 커지는 시기를 미리 보고 예산을 조절해볼 수 있어요.';
+function cumulativeXpForLevel(level: number) {
+  let total = 0;
+  for (let current = 1; current < level; current += 1) {
+    total += xpRequiredForLevel(current);
   }
-
-  if (profile === 'STEADY') {
-    return '현재 소비 흐름을 안정적으로 유지하는 데 집중하면 좋아요.';
-  }
-
-  return '나에게 맞는 소비 흐름을 만들어가는 중이에요.';
+  return total;
 }
 
 export default function MyPageScreen() {
+  const { showToast } = useToast();
 
-  const handleStartEditProfile = () => {
-    setEditEmail(user.email);
-    setEditIncomeType(user.income_type);
-    setEditPayday(String(user.payday));
-    setEditSpendProfile(user.spend_profile);
-    setIsEditingProfile(true);
-  };
+  const [user, setUser] = useState<MeResponse>(emptyUser);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const [user, setUser] = useState<MeResponse>({
-    user_id: '',
-    email: '',
-    income_type: 'STUDENT',
-    payday: 25,
-    spend_profile: 'IMPULSIVE',
-    total_xp: 0,
-    current_level: 1,
-    created_at: null,
+  const [preferences, setPreferences] = useState<AppPreferences>(
+    DEFAULT_APP_PREFERENCES
+  );
+
+  const [categorySummary, setCategorySummary] = useState({
+    total: 0,
+    challengeEnabled: 0,
+    averageAlertThreshold: 0,
   });
 
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [editEmail, setEditEmail] = useState('');
   const [editIncomeType, setEditIncomeType] = useState('STUDENT');
   const [editPayday, setEditPayday] = useState('25');
-  const [editSpendProfile, setEditSpendProfile] = useState('IMPULSIVE');
+  const [editSpendProfile, setEditSpendProfile] = useState('STEADY');
 
-  const loadUserProfile = async () => {
+  const levelProgress = useMemo(() => {
+    if (user.current_level >= 50) return 1;
+
+    const base = cumulativeXpForLevel(user.current_level);
+    const needed = xpRequiredForLevel(user.current_level);
+    const current = Math.max(0, user.total_xp - base);
+
+    return needed > 0 ? Math.min(current / needed, 1) : 1;
+  }, [user.current_level, user.total_xp]);
+
+  const xpToNext = useMemo(() => {
+    if (user.current_level >= 50) return 0;
+
+    const base = cumulativeXpForLevel(user.current_level);
+    const needed = xpRequiredForLevel(user.current_level);
+    const current = Math.max(0, user.total_xp - base);
+
+    return Math.max(0, needed - current);
+  }, [user.current_level, user.total_xp]);
+
+  const loadPage = useCallback(async () => {
     try {
-      setIsUserLoading(true);
+      setIsLoading(true);
 
-      const currentUser = await getCurrentUser();
+      const [userResult, categoriesResult, preferenceResult] =
+        await Promise.allSettled([
+          getCurrentUser(),
+          getCategoriesFromApi(),
+          getAppPreferences(),
+        ]);
 
-      setUser(currentUser);
-      setEditEmail(currentUser.email);
-      setEditIncomeType(currentUser.income_type);
-      setEditPayday(String(currentUser.payday));
-      setEditSpendProfile(currentUser.spend_profile);
-    } catch {
-      showToast('내 정보를 불러오지 못했어요.');
+      if (userResult.status === 'fulfilled') {
+        setUser(userResult.value);
+      } else {
+        showToast('내 정보를 불러오지 못했어요.');
+      }
+
+      if (categoriesResult.status === 'fulfilled') {
+        const categories = categoriesResult.value;
+        const challengeEnabled = categories.filter(
+          (item) => item.is_daily_challenge
+        ).length;
+
+        const averageAlertThreshold =
+          categories.length > 0
+            ? Math.round(
+                categories.reduce(
+                  (sum, item) => sum + Number(item.alert_threshold ?? 0),
+                  0
+                ) / categories.length
+              )
+            : 0;
+
+        setCategorySummary({
+          total: categories.length,
+          challengeEnabled,
+          averageAlertThreshold,
+        });
+      }
+
+      if (preferenceResult.status === 'fulfilled') {
+        setPreferences(preferenceResult.value);
+      }
     } finally {
-      setIsUserLoading(false);
+      setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useFocusEffect(
     useCallback(() => {
-      loadUserProfile();
-    }, [])
+      loadPage();
+    }, [loadPage])
   );
 
-  const [isUserLoading, setIsUserLoading] = useState(false);
+  const startEdit = () => {
+    setEditEmail(user.email);
+    setEditIncomeType(user.income_type);
+    setEditPayday(String(user.payday));
+    setEditSpendProfile(user.spend_profile);
+    setIsEditing(true);
+  };
 
-  const { showToast } = useToast();
-
-  const {
-    currentStreak,
-    weeklyCompletedCount,
-    isTodayMissionCompleted,
-  } = useMission();
-
-  const [pushEnabled, setPushEnabled] = useState(true);
-  const [missionReminderEnabled, setMissionReminderEnabled] = useState(true);
-  const [budgetAlertEnabled, setBudgetAlertEnabled] = useState(true);
-
-  const currentXp = user.total_xp;
-  const currentLevel = user.current_level;
-  const levelBaseXp = Math.max(0, (currentLevel - 1) * 100);
-  const nextLevelXp = currentLevel * 100;
-  const levelProgress =
-    nextLevelXp > levelBaseXp
-      ? Math.min((currentXp - levelBaseXp) / (nextLevelXp - levelBaseXp), 1)
-      : 0;
-  const xpToNextLevel = Math.max(0, nextLevelXp - currentXp);
-
-  const missionCategoryCount = mockCategorySettings.filter(
-    (item) => item.is_daily_challenge
-  ).length;
-
-  const handleSaveProfile = async () => {
-    const parsedPayday = Number(editPayday);
+  const saveProfile = async () => {
+    const payday = Number(editPayday);
 
     if (!editEmail.trim()) {
       showToast('이메일을 입력해 주세요.');
       return;
     }
 
-    if (!Number.isInteger(parsedPayday) || parsedPayday < 1 || parsedPayday > 31) {
+    if (!Number.isInteger(payday) || payday < 1 || payday > 31) {
       showToast('수입일은 1일부터 31일 사이로 입력해 주세요.');
       return;
     }
 
     try {
-      setIsSavingProfile(true);
+      setIsSaving(true);
 
-      const updatedUser = await updateCurrentUser({
+      const updated = await updateCurrentUser({
         email: editEmail.trim(),
         income_type: editIncomeType,
-        payday: parsedPayday,
+        payday,
         spend_profile: editSpendProfile,
       });
 
-      setUser(updatedUser);
-      setIsEditingProfile(false);
-      showToast('개인정보가 저장됐어요.');
+      setUser(updated);
+      setIsEditing(false);
+      showToast('프로필을 저장했어요.');
     } catch {
-      showToast('개인정보를 저장하지 못했어요.');
+      showToast('프로필을 저장하지 못했어요.');
     } finally {
-      setIsSavingProfile(false);
+      setIsSaving(false);
     }
   };
 
-  const handleTogglePush = (value: boolean) => {
-    setPushEnabled(value);
-    showToast(value ? '알림을 켰어요.' : '알림을 껐어요.');
+  const updatePreference = async (
+    key: keyof AppPreferences,
+    value: boolean
+  ) => {
+    const next = {
+      ...preferences,
+      [key]: value,
+    };
+
+    setPreferences(next);
+
+    try {
+      await saveAppPreferences(next);
+    } catch {
+      setPreferences(preferences);
+      showToast('설정을 저장하지 못했어요.');
+    }
   };
 
-  const handleToggleMissionReminder = (value: boolean) => {
-    setMissionReminderEnabled(value);
-    showToast(value ? '미션 알림을 켰어요.' : '미션 알림을 껐어요.');
+  const logout = async () => {
+    await deleteAccessToken();
+    showToast('로그아웃되었습니다.');
+    router.replace('/auth/login');
   };
-
-  const handleToggleBudgetAlert = (value: boolean) => {
-    setBudgetAlertEnabled(value);
-    showToast(value ? '예산 알림을 켰어요.' : '예산 알림을 껐어요.');
-  };
-
-  const handleLogout = async () => {
-  await deleteAccessToken();
-  showToast('로그아웃되었습니다.');
-  router.replace('/auth/login');
-};
 
   return (
-    <LinearGradient
-      colors={['#FFF8D8', '#FFFBF0', '#FFFFFF']}
-      style={styles.gradient}
-    >
-      <View style={styles.backgroundOrbLarge} />
-      <View style={styles.backgroundOrbSmall} />
-      <View style={styles.backgroundOrbTiny} />
-
+    <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
         <AppScreenHeader
           label="MY"
-          title="내 소비 습관과 설정을 관리해요."
+          title="내 정보와 설정"
           description={
-            isUserLoading
-              ? '내 정보를 불러오고 있어요.'
-              : '프로필, 미션 성장 상태, 알림 설정을 한곳에서 확인할 수 있습니다.'
+            isLoading
+              ? '설정을 불러오고 있어요.'
+              : '프로필, 예산·챌린지 기준, 알림 설정을 관리해요.'
           }
           Icon={UserRound}
         />
 
-        <GlassCard delay={80} tone="butter" style={styles.profileCard}>
-          <View style={styles.profileTopRow}>
-            <View style={styles.avatarBubble}>
-              <UserRound size={32} color={colors.text} strokeWidth={2.8} />
+        <View style={styles.profileCard}>
+          <View style={styles.profileTop}>
+            <View style={styles.avatar}>
+              <UserRound size={25} color={colors.text} strokeWidth={2.5} />
             </View>
 
-            <View style={styles.profileTextBox}>
-              <Text style={styles.cardLabel}>내 프로필</Text>
-              <Text style={styles.profileName}>Moni 사용자</Text>
-              <Text style={styles.profileEmail}>{user.email}</Text>
-            </View>
-
-            <View style={styles.levelBadge}>
-              <Text style={styles.levelBadgeText}>Lv. {currentLevel}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.profileMessage}>
-            {getProfileMessage(user.spend_profile)}
-          </Text>
-
-          <View style={styles.profileInfoRow}>
-            <View style={styles.profileInfoItem}>
-              <Text style={styles.profileInfoLabel}>유형</Text>
-              <Text style={styles.profileInfoValue}>
-                {getIncomeTypeLabel(user.income_type)}
+            <View style={styles.profileCopy}>
+              <Text style={styles.email}>{user.email || 'Moni 사용자'}</Text>
+              <Text style={styles.profileMeta}>
+                {getIncomeTypeLabel(user.income_type)} ·{' '}
+                {getSpendProfileLabel(user.spend_profile)} · 매월 {user.payday}일
               </Text>
             </View>
 
-            <View style={styles.profileInfoItem}>
-              <Text style={styles.profileInfoLabel}>소비 성향</Text>
-              <Text style={styles.profileInfoValue}>
-                {getSpendProfileLabel(user.spend_profile)}
-              </Text>
-            </View>
-
-            <View style={styles.profileInfoItem}>
-              <Text style={styles.profileInfoLabel}>수입일</Text>
-              <Text style={styles.profileInfoValue}>매월 {user.payday}일</Text>
-            </View>
+            <Pressable
+              onPress={startEdit}
+              style={({ pressed }) => [
+                styles.editButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Pencil size={16} color={colors.text} strokeWidth={2.4} />
+            </Pressable>
           </View>
-        </GlassCard>
+        </View>
 
-        <GlassCard delay={160} style={styles.growthCard}>
-          <View style={styles.sectionTitleRow}>
-            <Trophy size={18} color={colors.butterDeep} strokeWidth={2.8} />
-            <Text style={styles.sectionTitle}>성장 상태</Text>
-          </View>
-
-          <View style={styles.growthMainRow}>
+        <View style={styles.growthCard}>
+          <View style={styles.growthTop}>
             <View>
-              <Text style={styles.growthLevel}>Lv. {currentLevel}</Text>
-              <Text style={styles.growthDescription}>
-                {xpToNextLevel <= 0
-                  ? '새로운 레벨에 도달했어요.'
-                  : `다음 레벨까지 ${xpToNextLevel} XP 남았습니다.`}
-              </Text>
+              <Text style={styles.cardLabel}>성장 상태</Text>
+              <Text style={styles.level}>Lv.{user.current_level}</Text>
             </View>
 
-            <View style={styles.xpBadge}>
-              <Sparkles size={15} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.xpBadgeText}>{currentXp} XP</Text>
-            </View>
-          </View>
-
-          <AnimatedProgressBar progress={levelProgress} tone="warning" />
-
-          <View style={styles.growthStatsRow}>
-            <View style={styles.growthStatItem}>
-              <Text style={styles.growthStatLabel}>연속 성공</Text>
-              <Text style={styles.growthStatValue}>{currentStreak}일</Text>
-            </View>
-
-            <View style={styles.growthStatItem}>
-              <Text style={styles.growthStatLabel}>이번 주 완료</Text>
-              <Text style={styles.growthStatValue}>
-                {weeklyCompletedCount}개
-              </Text>
-            </View>
-
-            <View style={styles.growthStatItem}>
-              <Text style={styles.growthStatLabel}>오늘 미션</Text>
-              <Text style={styles.growthStatValue}>
-                {isTodayMissionCompleted ? '완료' : '진행 중'}
-              </Text>
+            <View style={styles.pointPill}>
+              <WalletCards
+                size={15}
+                color={colors.butterDeep}
+                strokeWidth={2.4}
+              />
+              <Text style={styles.pointText}>{user.current_points}P</Text>
             </View>
           </View>
-        </GlassCard>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>자주 쓰는 메뉴</Text>
-          <Text style={styles.sectionSubtitle}>
-            자주 확인하는 기능만 먼저 모았습니다.
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${Math.round(levelProgress * 100)}%` },
+              ]}
+            />
+          </View>
+
+          <View style={styles.progressMeta}>
+            <Text style={styles.progressText}>{user.total_xp} XP 누적</Text>
+            <Text style={styles.progressText}>
+              다음 레벨까지 {xpToNext} XP
+            </Text>
+          </View>
+
+          <Text style={styles.rewardNote}>
+            레벨업 시 50P, 5레벨 단위에는 추가 100P와 전용 보상이 지급될 수 있어요.
           </Text>
         </View>
 
+        <Text style={styles.sectionTitle}>소비·챌린지 설정</Text>
+
         <Pressable
-          style={styles.shortcutCard}
+          style={({ pressed }) => [
+            styles.navigationCard,
+            pressed && styles.pressed,
+          ]}
           onPress={() => router.push('/(tabs)/transactions')}
         >
-          <View style={styles.shortcutIconBubble}>
-            <PiggyBank size={22} color={colors.text} strokeWidth={2.8} />
+          <View style={styles.navIcon}>
+            <CreditCard size={20} color={colors.text} strokeWidth={2.5} />
           </View>
 
-          <View style={styles.shortcutTextBox}>
-            <Text style={styles.shortcutTitle}>지출과 예산 관리</Text>
-            <Text style={styles.shortcutDescription}>
-              지출 추가, 최근 내역, 항목별 예산을 확인합니다.
+          <View style={styles.navCopy}>
+            <Text style={styles.navTitle}>예산과 챌린지 대상 관리</Text>
+            <Text style={styles.navDescription}>
+              카테고리별 월 예산, 챌린지 포함 여부, 예산 알림 기준을 수정해요.
             </Text>
+
+            <View style={styles.summaryChips}>
+              <Text style={styles.summaryChip}>
+                카테고리 {categorySummary.total}개
+              </Text>
+              <Text style={styles.summaryChip}>
+                챌린지 {categorySummary.challengeEnabled}개
+              </Text>
+              {categorySummary.averageAlertThreshold > 0 ? (
+                <Text style={styles.summaryChip}>
+                  평균 알림 {categorySummary.averageAlertThreshold}%
+                </Text>
+              ) : null}
+            </View>
           </View>
 
-          <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
+          <ChevronRight size={18} color={colors.mutedText} strokeWidth={2.5} />
         </Pressable>
 
-        <Pressable
-          style={styles.shortcutCard}
-          onPress={() => router.push('/(tabs)/challenge')}
-        >
-          <View style={styles.shortcutIconBubble}>
-            <Target size={22} color={colors.text} strokeWidth={2.8} />
-          </View>
+        <Text style={styles.sectionTitle}>앱 설정</Text>
 
-          <View style={styles.shortcutTextBox}>
-            <Text style={styles.shortcutTitle}>오늘의 미션</Text>
-            <Text style={styles.shortcutDescription}>
-              오늘 완료할 소비 미션과 보상을 확인합니다.
+        <View style={styles.settingsCard}>
+          <SettingSwitch
+            Icon={Bell}
+            title="알림 받기"
+            description="Moni의 주요 알림을 표시할지 정해요."
+            value={preferences.pushEnabled}
+            onChange={(value) => updatePreference('pushEnabled', value)}
+          />
+
+          <SettingSwitch
+            Icon={Target}
+            title="챌린지 알림"
+            description="오늘의 챌린지를 확인할 수 있도록 알림 표시 여부를 저장해요."
+            value={preferences.challengeReminderEnabled}
+            onChange={(value) =>
+              updatePreference('challengeReminderEnabled', value)
+            }
+          />
+
+          <SettingSwitch
+            Icon={CreditCard}
+            title="예산 알림"
+            description="카테고리별 경고 기준에 도달했을 때 알림 표시 여부를 저장해요."
+            value={preferences.budgetAlertEnabled}
+            onChange={(value) => updatePreference('budgetAlertEnabled', value)}
+            last
+          />
+
+          <View style={styles.localSettingNote}>
+            <Settings size={14} color={colors.mutedText} strokeWidth={2.4} />
+            <Text style={styles.localSettingText}>
+              알림 구독 API가 아직 없어 위 3개는 이 기기에 저장됩니다. 예산 금액·알림
+              기준·챌린지 대상은 서버에 저장됩니다.
             </Text>
           </View>
+        </View>
 
-          <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
-        </Pressable>
+        <Text style={styles.sectionTitle}>계정</Text>
 
-        <GlassCard delay={260} style={styles.settingCard}>
-          <View style={styles.sectionTitleRow}>
-            <Settings size={18} color={colors.butterDeep} strokeWidth={2.8} />
-            <Text style={styles.sectionTitle}>앱 설정</Text>
-          </View>
-
-          <View style={styles.settingList}>
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <View style={styles.settingIconBubble}>
-                  <Bell size={19} color={colors.text} strokeWidth={2.8} />
-                </View>
-
-                <View style={styles.settingTextBox}>
-                  <Text style={styles.settingTitle}>알림 받기</Text>
-                  <Text style={styles.settingDescription}>
-                    중요한 알림을 받아볼게요.
-                  </Text>
-                </View>
-              </View>
-
-              <Switch
-                value={pushEnabled}
-                onValueChange={handleTogglePush}
-                thumbColor={pushEnabled ? colors.butterStrong : '#F4F4F4'}
-                trackColor={{
-                  true: colors.butterSoft,
-                  false: colors.gray200,
-                }}
-              />
+        <View style={styles.accountCard}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.accountItem,
+              pressed && styles.pressed,
+            ]}
+            onPress={startEdit}
+          >
+            <View style={styles.accountIcon}>
+              <ShieldCheck size={19} color={colors.text} strokeWidth={2.5} />
             </View>
-
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <View style={styles.settingIconBubble}>
-                  <Target size={19} color={colors.text} strokeWidth={2.8} />
-                </View>
-
-                <View style={styles.settingTextBox}>
-                  <Text style={styles.settingTitle}>미션 알림</Text>
-                  <Text style={styles.settingDescription}>
-                    오늘의 미션을 잊지 않도록 알려드릴게요.
-                  </Text>
-                </View>
-              </View>
-
-              <Switch
-                value={missionReminderEnabled}
-                onValueChange={handleToggleMissionReminder}
-                thumbColor={
-                  missionReminderEnabled ? colors.butterStrong : '#F4F4F4'
-                }
-                trackColor={{
-                  true: colors.butterSoft,
-                  false: colors.gray200,
-                }}
-              />
-            </View>
-
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <View style={styles.settingIconBubble}>
-                  <CreditCard size={19} color={colors.text} strokeWidth={2.8} />
-                </View>
-
-                <View style={styles.settingTextBox}>
-                  <Text style={styles.settingTitle}>예산 알림</Text>
-                  <Text style={styles.settingDescription}>
-                    예산에 가까워지면 미리 알려드릴게요.
-                  </Text>
-                </View>
-              </View>
-
-              <Switch
-                value={budgetAlertEnabled}
-                onValueChange={handleToggleBudgetAlert}
-                thumbColor={budgetAlertEnabled ? colors.butterStrong : '#F4F4F4'}
-                trackColor={{
-                  true: colors.butterSoft,
-                  false: colors.gray200,
-                }}
-              />
-            </View>
-          </View>
-        </GlassCard>
-
-        <GlassCard delay={340} style={styles.accountCard}>
-          <View style={styles.sectionTitleRow}>
-            <ShieldCheck size={18} color={colors.butterDeep} strokeWidth={2.8} />
-            <Text style={styles.sectionTitle}>계정</Text>
-          </View>
-
-                    <View style={styles.accountEditSection}>
-                      <Pressable style={styles.accountItem} onPress={handleStartEditProfile}>
-                        <View>
-                          <Text style={styles.accountTitle}>개인정보 관리</Text>
-                          <Text style={styles.accountDescription}>
-                            이메일과 기본 정보를 수정합니다.
-                          </Text>
-                        </View>
-
-                        <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
-                      </Pressable>
-
-                      {isEditingProfile ? (
-                        <View style={styles.editProfileBox}>
-                          <Text style={styles.editLabel}>이메일</Text>
-                          <TextInput
-                            style={styles.editInput}
-                            value={editEmail}
-                            onChangeText={setEditEmail}
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                            placeholder="이메일"
-                            placeholderTextColor={colors.mutedText}
-                          />
-
-                          <Text style={styles.editLabel}>수입 유형</Text>
-                          <View style={styles.editOptionRow}>
-                            {['STUDENT', 'EMPLOYEE'].map((option) => (
-                              <Pressable
-                                key={option}
-                                style={[
-                                  styles.editOptionButton,
-                                  editIncomeType === option && styles.selectedEditOptionButton,
-                                ]}
-                                onPress={() => setEditIncomeType(option)}
-                              >
-                                <Text
-                                  style={[
-                                    styles.editOptionText,
-                                    editIncomeType === option && styles.selectedEditOptionText,
-                                  ]}
-                                >
-                                  {getIncomeTypeLabel(option)}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
-
-                          <Text style={styles.editLabel}>수입일</Text>
-                          <TextInput
-                            style={styles.editInput}
-                            value={editPayday}
-                            onChangeText={setEditPayday}
-                            keyboardType="number-pad"
-                            placeholder="예: 25"
-                            placeholderTextColor={colors.mutedText}
-                          />
-
-                          <Text style={styles.editLabel}>소비 성향</Text>
-                          <View style={styles.editOptionColumn}>
-                            {['STEADY', 'IMPULSIVE', 'CYCLICAL'].map((option) => (
-                              <Pressable
-                                key={option}
-                                style={[
-                                  styles.editOptionButton,
-                                  editSpendProfile === option && styles.selectedEditOptionButton,
-                                ]}
-                                onPress={() => setEditSpendProfile(option)}
-                              >
-                                <Text
-                                  style={[
-                                    styles.editOptionText,
-                                    editSpendProfile === option && styles.selectedEditOptionText,
-                                  ]}
-                                >
-                                  {getSpendProfileLabel(option)}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
-
-                          <View style={styles.editActionRow}>
-                            <Pressable
-                              style={styles.cancelEditButton}
-                              onPress={() => setIsEditingProfile(false)}
-                            >
-                              <Text style={styles.cancelEditButtonText}>취소</Text>
-                            </Pressable>
-
-                            <Pressable
-                              style={styles.saveEditButton}
-                              onPress={handleSaveProfile}
-                              disabled={isSavingProfile}
-                            >
-                              <Text style={styles.saveEditButtonText}>
-                                {isSavingProfile ? '저장 중...' : '저장'}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      ) : null}
-                    </View>
-
-          <Pressable style={styles.accountItem}>
-            <View>
-              <Text style={styles.accountTitle}>연동 관리</Text>
+            <View style={styles.accountCopy}>
+              <Text style={styles.accountTitle}>개인정보 관리</Text>
               <Text style={styles.accountDescription}>
-                카드 내역과 지출 데이터 연결을 관리합니다.
+                이메일, 수입 유형, 수입일, 소비 성향을 수정해요.
               </Text>
             </View>
-
-            <ChevronRight size={20} color={colors.butterBrown} strokeWidth={2.8} />
+            <ChevronRight size={18} color={colors.mutedText} strokeWidth={2.5} />
           </Pressable>
 
-          <View style={styles.accountSummaryLine}>
-            <Target size={16} color={colors.butterBrown} strokeWidth={2.8} />
-            <Text style={styles.accountSummaryText}>
-              현재 {missionCategoryCount}개 항목이 미션에 사용됩니다.
-            </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.accountItem,
+              styles.accountItemBorder,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => router.push('/(tabs)/transactions')}
+          >
+            <View style={styles.accountIcon}>
+              <CreditCard size={19} color={colors.text} strokeWidth={2.5} />
+            </View>
+            <View style={styles.accountCopy}>
+              <Text style={styles.accountTitle}>지출 데이터 관리</Text>
+              <Text style={styles.accountDescription}>
+                직접 입력한 지출 내역과 분류를 확인하고 수정해요.
+              </Text>
+            </View>
+            <ChevronRight size={18} color={colors.mutedText} strokeWidth={2.5} />
+          </Pressable>
+        </View>
+
+        <Pressable
+          onPress={logout}
+          style={({ pressed }) => [
+            styles.logoutButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <LogOut size={18} color={colors.subText} strokeWidth={2.4} />
+          <Text style={styles.logoutText}>로그아웃</Text>
+        </Pressable>
+      </ScrollView>
+
+      <ProfileEditModal
+        visible={isEditing}
+        saving={isSaving}
+        email={editEmail}
+        incomeType={editIncomeType}
+        payday={editPayday}
+        spendProfile={editSpendProfile}
+        setEmail={setEditEmail}
+        setIncomeType={setEditIncomeType}
+        setPayday={setEditPayday}
+        setSpendProfile={setEditSpendProfile}
+        onCancel={() => setIsEditing(false)}
+        onSave={saveProfile}
+      />
+    </View>
+  );
+}
+
+type SettingSwitchProps = {
+  Icon: typeof Bell;
+  title: string;
+  description: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  last?: boolean;
+};
+
+function SettingSwitch({
+  Icon,
+  title,
+  description,
+  value,
+  onChange,
+  last = false,
+}: SettingSwitchProps) {
+  return (
+    <View style={[styles.settingItem, last && styles.settingItemLast]}>
+      <View style={styles.settingIcon}>
+        <Icon size={18} color={colors.text} strokeWidth={2.5} />
+      </View>
+
+      <View style={styles.settingCopy}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        <Text style={styles.settingDescription}>{description}</Text>
+      </View>
+
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        thumbColor={value ? colors.butterStrong : '#F4F4F4'}
+        trackColor={{
+          true: colors.butterSoft,
+          false: colors.gray200,
+        }}
+      />
+    </View>
+  );
+}
+
+type ProfileEditModalProps = {
+  visible: boolean;
+  saving: boolean;
+  email: string;
+  incomeType: string;
+  payday: string;
+  spendProfile: string;
+  setEmail: (value: string) => void;
+  setIncomeType: (value: string) => void;
+  setPayday: (value: string) => void;
+  setSpendProfile: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+};
+
+function ProfileEditModal({
+  visible,
+  saving,
+  email,
+  incomeType,
+  payday,
+  spendProfile,
+  setEmail,
+  setIncomeType,
+  setPayday,
+  setSpendProfile,
+  onCancel,
+  onSave,
+}: ProfileEditModalProps) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>개인정보 관리</Text>
+          <Text style={styles.modalDescription}>
+            AI 분석과 챌린지에 사용하는 기본 정보를 확인하고 수정해요.
+          </Text>
+
+          <Text style={styles.editLabel}>이메일</Text>
+          <TextInput
+            style={styles.editInput}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="이메일"
+            placeholderTextColor={colors.mutedText}
+          />
+
+          <Text style={styles.editLabel}>수입 유형</Text>
+          <View style={styles.optionWrap}>
+            {INCOME_TYPES.map(([key, label]) => (
+              <Pressable
+                key={key}
+                style={[
+                  styles.optionButton,
+                  incomeType === key && styles.optionButtonSelected,
+                ]}
+                onPress={() => setIncomeType(key)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    incomeType === key && styles.optionTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
-          <Pressable style={styles.logoutButton} onPress={handleLogout}>
-  <LogOut size={19} color={colors.text} strokeWidth={2.8} />
-  <Text style={styles.logoutText}>로그아웃</Text>
-</Pressable>
-        </GlassCard>
-      </ScrollView>
-    </LinearGradient>
+          <Text style={styles.editLabel}>수입일</Text>
+          <TextInput
+            style={styles.editInput}
+            value={payday}
+            onChangeText={setPayday}
+            keyboardType="number-pad"
+            placeholder="예: 25"
+            placeholderTextColor={colors.mutedText}
+          />
+
+          <Text style={styles.editLabel}>소비 성향</Text>
+          <View style={styles.optionWrap}>
+            {SPEND_PROFILES.map(([key, label]) => (
+              <Pressable
+                key={key}
+                style={[
+                  styles.optionButton,
+                  spendProfile === key && styles.optionButtonSelected,
+                ]}
+                onPress={() => setSpendProfile(key)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    spendProfile === key && styles.optionTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.modalActions}>
+            <Pressable style={styles.cancelButton} onPress={onCancel}>
+              <Text style={styles.cancelButtonText}>취소</Text>
+            </Pressable>
+            <Pressable
+              style={styles.saveButton}
+              onPress={onSave}
+              disabled={saving}
+            >
+              <Text style={styles.saveButtonText}>
+                {saving ? '저장 중...' : '저장'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
+  screen: {
     flex: 1,
-  },
-  backgroundOrbLarge: {
-    display: 'none',
-  },
-  backgroundOrbSmall: {
-    display: 'none',
-  },
-  backgroundOrbTiny: {
-    display: 'none',
+    backgroundColor: colors.background,
   },
   container: {
-    padding: 20,
-    paddingBottom: 128,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 112,
   },
   profileCard: {
-    backgroundColor: 'rgba(255,248,216,0.42)',
-  },
-  profileTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 14,
-  },
-  avatarBubble: {
-    width: 66,
-    height: 66,
-    borderRadius: 26,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileTextBox: {
-    flex: 1,
-  },
-  cardLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 6,
-  },
-  profileName: {
-    fontFamily: typography.fontFamily,
-    fontSize: 23,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.4,
-    marginBottom: 4,
-  },
-  profileEmail: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  levelBadge: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: colors.butterPale,
-  },
-  levelBadgeText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  profileMessage: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-    marginBottom: 16,
-  },
-  profileInfoRow: {
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    flexDirection: 'row',
-    gap: 14,
-  },
-  profileInfoItem: {
-    flex: 1,
-  },
-  profileInfoLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 5,
-  },
-  profileInfoValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
-    profileEditButton: {
-    height: 48,
-    borderRadius: 18,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 14,
-  },
-  profileEditButtonText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  editProfileBox: {
-    marginTop: 14,
-    gap: 9,
-  },
-  editLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.subText,
-  },
-  editInput: {
-    minHeight: 50,
-    borderRadius: 17,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.38)',
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    color: colors.text,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 15,
+    marginBottom: 10,
   },
-  editOptionRow: {
+  profileTop: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 12,
   },
-  editOptionColumn: {
-    gap: 8,
-  },
-  editOptionButton: {
-    minHeight: 44,
+  avatar: {
+    width: 48,
+    height: 48,
     borderRadius: 16,
-    paddingHorizontal: 13,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.34)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedEditOptionButton: {
-    backgroundColor: colors.butterStrong,
-    borderColor: 'rgba(215,169,0,0.28)',
-  },
-  editOptionText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.subText,
-  },
-  selectedEditOptionText: {
-    color: colors.text,
-  },
-  editActionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 6,
-  },
-  cancelEditButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelEditButtonText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.subText,
-  },
-  saveEditButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 18,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveEditButtonText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  growthCard: {
-    backgroundColor: 'rgba(255,255,255,0.36)',
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 21,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 5,
-  },
-  growthMainRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  growthLevel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.6,
-    marginBottom: 5,
-  },
-  growthDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  xpBadge: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
     backgroundColor: colors.butterPale,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'center',
   },
-  xpBadgeText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  growthStatsRow: {
-    paddingTop: 14,
-    marginTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    flexDirection: 'row',
-    gap: 14,
-  },
-  growthStatItem: {
+  profileCopy: {
     flex: 1,
   },
-  growthStatLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 5,
-  },
-  growthStatValue: {
+  email: {
     fontFamily: typography.fontFamily,
     fontSize: 15,
     fontWeight: '900',
     color: colors.text,
   },
-  sectionHeader: {
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  sectionSubtitle: {
+  profileMeta: {
+    marginTop: 4,
     fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 10.5,
+    lineHeight: 15,
     color: colors.subText,
   },
-  shortcutCard: {
-    minHeight: 72,
-    borderRadius: 23,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    backgroundColor: 'rgba(255,255,255,0.34)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.42)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 10,
-  },
-  shortcutIconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 17,
-    backgroundColor: colors.butterPale,
+  editButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  shortcutTextBox: {
-    flex: 1,
+  growthCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 16,
+    marginBottom: 22,
   },
-  shortcutTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  shortcutDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.subText,
-  },
-  settingCard: {
-    backgroundColor: 'rgba(255,255,255,0.36)',
-  },
-  settingList: {
-    gap: 14,
-  },
-  settingItem: {
-    minHeight: 58,
+  growthTop: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    alignItems: 'center',
   },
-  settingLeft: {
-    flex: 1,
+  cardLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 10,
+    fontWeight: '900',
+    color: colors.mutedText,
+    marginBottom: 3,
+  },
+  level: {
+    fontFamily: typography.fontFamily,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  pointPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 5,
+    borderRadius: 999,
+    backgroundColor: colors.butterPale,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
-  settingIconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 16,
+  pointText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.butterDeep,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    overflow: 'hidden',
+    marginTop: 14,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.butterStrong,
+  },
+  progressMeta: {
+    marginTop: 7,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  progressText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.subText,
+  },
+  rewardNote: {
+    marginTop: 11,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+    fontFamily: typography.fontFamily,
+    fontSize: 10.5,
+    lineHeight: 16,
+    color: colors.mutedText,
+  },
+  sectionTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
+    marginBottom: 9,
+    marginTop: 2,
+  },
+  navigationCard: {
+    minHeight: 88,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    marginBottom: 22,
+  },
+  navIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: colors.butterPale,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  settingTextBox: {
+  navCopy: {
+    flex: 1,
+  },
+  navTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13.5,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  navDescription: {
+    marginTop: 3,
+    fontFamily: typography.fontFamily,
+    fontSize: 10.5,
+    lineHeight: 15,
+    color: colors.subText,
+  },
+  summaryChips: {
+    marginTop: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  summaryChip: {
+    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontFamily: typography.fontFamily,
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.subText,
+  },
+  settingsCard: {
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    marginBottom: 22,
+  },
+  settingItem: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 13,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSoft,
+  },
+  settingItemLast: {
+    borderBottomWidth: 0,
+  },
+  settingIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingCopy: {
     flex: 1,
   },
   settingTitle: {
     fontFamily: typography.fontFamily,
-    fontSize: 15,
+    fontSize: 12.5,
     fontWeight: '900',
     color: colors.text,
-    marginBottom: 4,
   },
   settingDescription: {
+    marginTop: 2,
     fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 9.5,
+    lineHeight: 14,
     color: colors.subText,
   },
-  accountCard: {
-    backgroundColor: 'rgba(255,255,255,0.36)',
-  },
-  accountItem: {
-    minHeight: 62,
+  localSettingNote: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    paddingVertical: 12,
+    borderTopColor: colors.borderSoft,
+    backgroundColor: colors.surfaceSoft,
+    padding: 11,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    alignItems: 'center',
-  },
-  accountEditSection: {
-  borderBottomWidth: 1,
-  borderBottomColor: 'rgba(122,111,91,0.12)',
-  paddingBottom: 12,
-  marginBottom: 2,
-},
-  accountTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  accountDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: colors.subText,
-  },
-  accountSummaryLine: {
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 7,
-    marginBottom: 12,
   },
-  accountSummaryText: {
+  localSettingText: {
     flex: 1,
     fontFamily: typography.fontFamily,
-    fontSize: 13,
+    fontSize: 9.5,
+    lineHeight: 14,
+    color: colors.mutedText,
+  },
+  accountCard: {
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  accountItem: {
+    minHeight: 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 13,
+  },
+  accountItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+  },
+  accountIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountCopy: {
+    flex: 1,
+  },
+  accountTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12.5,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  accountDescription: {
+    marginTop: 2,
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    lineHeight: 14,
     color: colors.subText,
   },
   logoutButton: {
-    height: 54,
-    borderRadius: 21,
-    backgroundColor: colors.butterStrong,
+    marginTop: 14,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceMuted,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1003,7 +956,121 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     fontFamily: typography.fontFamily,
-    fontSize: 15,
+    fontSize: 12.5,
+    fontWeight: '900',
+    color: colors.subText,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.24)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 440,
+    alignSelf: 'center',
+    maxHeight: '92%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 20,
+  },
+  modalTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  modalDescription: {
+    marginTop: 4,
+    marginBottom: 16,
+    fontFamily: typography.fontFamily,
+    fontSize: 10.5,
+    lineHeight: 15,
+    color: colors.subText,
+  },
+  editLabel: {
+    marginTop: 11,
+    marginBottom: 6,
+    fontFamily: typography.fontFamily,
+    fontSize: 10.5,
+    fontWeight: '900',
+    color: colors.subText,
+  },
+  editInput: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+    paddingHorizontal: 12,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: colors.text,
+  },
+  optionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  optionButton: {
+    minHeight: 40,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionButtonSelected: {
+    backgroundColor: colors.butterPale,
+    borderColor: colors.butterSoft,
+  },
+  optionText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: colors.subText,
+  },
+  optionTextSelected: {
+    color: colors.butterDeep,
+  },
+  modalActions: {
+    marginTop: 20,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.subText,
+  },
+  saveButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.butterStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
     fontWeight: '900',
     color: colors.text,
   },

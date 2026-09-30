@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,17 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {
-  ArrowRight,
-  Eye,
-  LockKeyhole,
-  Mail,
-  Sparkles,
-  WalletCards,
-} from 'lucide-react-native';
-import { useState } from 'react';
 
-import { AnimatedButton } from '@/components/AnimatedButton';
+import { WanderingMascot } from '@/components/mascot';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useToast } from '@/contexts/ToastContext';
@@ -30,14 +22,8 @@ import { deleteAccessToken } from '@/services/tokenStorage';
 
 function getLoginErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 401) {
-      return '이메일 또는 비밀번호를 확인해 주세요.';
-    }
-
-    if (error.status === 422) {
-      return '입력한 로그인 정보 형식을 확인해 주세요.';
-    }
-
+    if (error.status === 401) return '이메일 또는 비밀번호를 확인해 주세요.';
+    if (error.status === 422) return '입력한 로그인 정보 형식을 확인해 주세요.';
     return error.message || '로그인에 실패했습니다.';
   }
 
@@ -50,19 +36,17 @@ function getLoginErrorMessage(error: unknown) {
 
 export default function LoginScreen() {
   const { showToast } = useToast();
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleLogin = async () => {
     if (isLoading) return;
-
     if (!email.trim()) {
       showToast('이메일을 입력해 주세요.');
       return;
     }
-
     if (!password.trim()) {
       showToast('비밀번호를 입력해 주세요.');
       return;
@@ -70,14 +54,8 @@ export default function LoginScreen() {
 
     try {
       setIsLoading(true);
-
-      await loginApi({
-        email: email.trim(),
-        password,
-      });
-
+      await loginApi({ email: email.trim(), password });
       await getMeApi();
-
       showToast('로그인되었습니다.');
       router.replace('/(tabs)/home');
     } catch (error) {
@@ -89,14 +67,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={['#FFF4C7', '#FFFBF0', '#FFFFFF']}
-      style={styles.gradient}
-    >
-      <View style={styles.backgroundOrbLarge} />
-      <View style={styles.backgroundOrbSmall} />
-      <View style={styles.backgroundOrbTiny} />
-
+    <View style={styles.screen}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -106,30 +77,29 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.hero}>
-            <View style={styles.logoBubble}>
-              <WalletCards size={38} color={colors.text} strokeWidth={2.8} />
+          <View style={styles.brandArea}>
+            <View style={styles.mascotWrap}>
+              <WanderingMascot
+                enabled={false}
+                motionEnabled
+                size={96}
+                state="idle"
+                style={styles.fixedMascotMotion}
+              />
             </View>
-
-            <View style={styles.brandPill}>
-              <Sparkles size={14} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.brandPillText}>Moni</Text>
-            </View>
-
-            <Text style={styles.title}>소비 습관을 하루 미션으로 관리해요.</Text>
+            <Text style={styles.brand}>MONI</Text>
+            <Text style={styles.title}>오늘의 소비를 가볍게 관리해요.</Text>
             <Text style={styles.subtitle}>
-              로그인하고 오늘의 소비 미션과 이번 달 예산 흐름을 확인해 보세요.
+              지출을 기록하고, 예측에 맞춘 챌린지와 캐릭터 성장을 확인할 수 있어요.
             </Text>
           </View>
 
           <View style={styles.formCard}>
             <Text style={styles.formTitle}>로그인</Text>
-            <Text style={styles.formDescription}>
-              이메일과 비밀번호를 입력해 주세요.
-            </Text>
+            <Text style={styles.formDescription}>계정 정보를 입력해 주세요.</Text>
 
-            <View style={styles.inputBox}>
-              <Mail size={19} color={colors.butterBrown} strokeWidth={2.6} />
+            <View style={styles.field}>
+              <Mail size={18} color={colors.subText} strokeWidth={2.4} />
               <TextInput
                 style={styles.input}
                 placeholder="이메일"
@@ -142,210 +112,185 @@ export default function LoginScreen() {
               />
             </View>
 
-            <View style={styles.inputBox}>
-              <LockKeyhole
-                size={19}
-                color={colors.butterBrown}
-                strokeWidth={2.6}
-              />
+            <View style={styles.field}>
+              <LockKeyhole size={18} color={colors.subText} strokeWidth={2.4} />
               <TextInput
                 style={styles.input}
                 placeholder="비밀번호"
                 placeholderTextColor={colors.mutedText}
-                secureTextEntry
+                secureTextEntry={!passwordVisible}
                 value={password}
                 onChangeText={setPassword}
                 editable={!isLoading}
+                onSubmitEditing={handleLogin}
               />
-              <Eye size={18} color={colors.mutedText} strokeWidth={2.4} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={passwordVisible ? '비밀번호 숨기기' : '비밀번호 보기'}
+                onPress={() => setPasswordVisible((value) => !value)}
+                hitSlop={8}
+              >
+                {passwordVisible ? (
+                  <EyeOff size={18} color={colors.mutedText} strokeWidth={2.3} />
+                ) : (
+                  <Eye size={18} color={colors.mutedText} strokeWidth={2.3} />
+                )}
+              </Pressable>
             </View>
 
-            <AnimatedButton
-              title={isLoading ? '로그인 중...' : '로그인하기'}
+            <Pressable
+              disabled={isLoading}
               onPress={handleLogin}
-              style={styles.loginButton}
-            />
+              style={({ pressed }) => [
+                styles.loginButton,
+                pressed && styles.pressed,
+                isLoading && styles.disabled,
+              ]}
+            >
+              <Text style={styles.loginButtonText}>
+                {isLoading ? '로그인 중...' : '로그인'}
+              </Text>
+            </Pressable>
 
             <Pressable
-              style={styles.signupLink}
-              onPress={() => {
-                if (!isLoading) {
-                  router.push('/auth/signup');
-                }
-              }}
+              disabled={isLoading}
+              onPress={() => router.push('/auth/signup')}
+              style={({ pressed }) => [styles.signupLink, pressed && styles.pressed]}
             >
               <Text style={styles.signupText}>처음이신가요?</Text>
               <View style={styles.signupRight}>
                 <Text style={styles.signupStrong}>회원가입</Text>
-                <ArrowRight
-                  size={15}
-                  color={colors.butterBrown}
-                  strokeWidth={2.8}
-                />
+                <ArrowRight size={15} color={colors.butterDeep} strokeWidth={2.6} />
               </View>
             </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  backgroundOrbLarge: {
-    display: 'none',
-  },
-  backgroundOrbSmall: {
-    display: 'none',
-  },
-  backgroundOrbTiny: {
-    display: 'none',
-  },
+  screen: { flex: 1, backgroundColor: colors.background },
+  keyboardView: { flex: 1 },
   container: {
     flexGrow: 1,
-    padding: 22,
-    paddingTop: 78,
-    paddingBottom: 40,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 22,
+    paddingVertical: 38,
   },
-  hero: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  logoBubble: {
-    width: 92,
-    height: 92,
-    borderRadius: 34,
-    backgroundColor: colors.butterStrong,
+  brandArea: { alignItems: 'center', marginBottom: 28 },
+  mascotWrap: {
+    width: 190,
+    height: 112,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    shadowOffset: {
-      width: 0,
-      height: 12,
-    },
-    elevation: 7,
+    marginBottom: 8,
+    overflow: 'visible',
   },
-  brandPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 14,
-  },
-  brandPillText: {
+  fixedMascotMotion: { width: '100%', height: '100%' },
+  brand: {
     fontFamily: typography.fontFamily,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '900',
-    color: colors.butterBrown,
+    letterSpacing: 1.5,
+    color: colors.butterDeep,
+    marginBottom: 8,
   },
   title: {
-    maxWidth: 330,
+    maxWidth: 350,
     textAlign: 'center',
     fontFamily: typography.fontFamily,
-    fontSize: 32,
-    lineHeight: 40,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: '900',
+    letterSpacing: -0.8,
     color: colors.text,
-    letterSpacing: -1,
-    marginBottom: 11,
   },
   subtitle: {
-    maxWidth: 310,
+    maxWidth: 360,
+    marginTop: 9,
     textAlign: 'center',
     fontFamily: typography.fontFamily,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13.5,
+    lineHeight: 21,
     color: colors.subText,
   },
   formCard: {
-    borderRadius: 32,
-    padding: 22,
-    backgroundColor: 'rgba(255,255,255,0.38)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.46)',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.10,
-    shadowRadius: 22,
-    shadowOffset: {
-      width: 0,
-      height: 12,
-    },
-    elevation: 5,
+    borderColor: colors.border,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    padding: 20,
   },
   formTitle: {
     fontFamily: typography.fontFamily,
-    fontSize: 24,
+    fontSize: 21,
     fontWeight: '900',
     color: colors.text,
-    letterSpacing: -0.6,
-    marginBottom: 6,
   },
   formDescription: {
+    marginTop: 4,
+    marginBottom: 18,
     fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
     color: colors.subText,
-    marginBottom: 16,
   },
-  inputBox: {
-    height: 58,
-    paddingHorizontal: 0,
-    backgroundColor: 'transparent',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(122,111,91,0.18)',
+  field: {
+    height: 54,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   input: {
     flex: 1,
     fontFamily: typography.fontFamily,
-    fontSize: 15,
+    fontSize: 14.5,
     color: colors.text,
   },
   loginButton: {
-    marginTop: 12,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: colors.butterStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  loginButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
   },
   signupLink: {
-    marginTop: 16,
-    minHeight: 52,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    paddingTop: 14,
+    minHeight: 48,
+    marginTop: 9,
+    paddingHorizontal: 3,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   signupText: {
     fontFamily: typography.fontFamily,
-    fontSize: 14,
+    fontSize: 12.5,
     color: colors.subText,
   },
-  signupRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
+  signupRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   signupStrong: {
     fontFamily: typography.fontFamily,
-    fontSize: 14,
+    fontSize: 12.5,
     fontWeight: '900',
-    color: colors.butterBrown,
+    color: colors.butterDeep,
   },
+  pressed: { opacity: 0.72 },
+  disabled: { opacity: 0.6 },
 });

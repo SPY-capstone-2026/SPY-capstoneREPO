@@ -75,8 +75,12 @@ def call_llm(
         return text or None
 
     except Exception as e:
-        # 실패 원인을 남겨야 서버에서 조용한 폴백을 눈치챌 수 있다
+        # 실패 원인을 남겨야 서버에서 조용한 폴백을 눈치챌 수 있다.
+        # (main의 d1a71b9 "fallback 디버그 로그 추가"에서 온 traceback 출력 유지)
+        import traceback
+
         print(f"[LLM 폴백 발생] {type(e).__name__}: {e}")
+        traceback.print_exc()
         return None
 
 

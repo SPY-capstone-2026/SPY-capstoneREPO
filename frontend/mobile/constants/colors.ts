@@ -1,46 +1,47 @@
 export const colors = {
-  background: '#F8FAFC',
+  background: '#FCFCFB',
   backgroundWhite: '#FFFFFF',
 
   surface: '#FFFFFF',
-  surfaceMuted: '#F1F5F9',
-  surfaceSoft: '#F8FAFC',
+  surfaceMuted: '#F6F6F3',
+  surfaceSoft: '#FAFAF7',
 
-  text: '#111827',
-  subText: '#4B5563',
-  mutedText: '#9CA3AF',
+  text: '#202124',
+  subText: '#62656B',
+  mutedText: '#9A9DA3',
 
-  border: '#E5E7EB',
-  borderSoft: '#EEF2F7',
+  border: '#E8E8E3',
+  borderSoft: '#F0F0EC',
 
-  butterPale: '#FFF7D6',
-  butterSoft: '#F6D365',
-  butterStrong: '#F4C430',
-  butterDeep: '#B7791F',
-  butterBrown: '#8A5A12',
+  // Butter is an accent only. Avoid using it as a page background.
+  butterPale: '#FFF8DF',
+  butterSoft: '#F7DE8B',
+  butterStrong: '#F1C75B',
+  butterDeep: '#B78118',
+  butterBrown: '#8A6417',
 
-  successBg: '#ECFDF3',
-  successText: '#027A48',
+  successBg: '#EDF8F1',
+  successText: '#2F7D50',
 
-  warningBg: '#FFFAEB',
-  warningText: '#B54708',
+  warningBg: '#FFF7E8',
+  warningText: '#A66216',
 
-  dangerBg: '#FEF3F2',
-  dangerText: '#B42318',
+  dangerBg: '#FFF0EF',
+  dangerText: '#B3453D',
 
-  infoBg: '#EFF6FF',
-  infoText: '#2563EB',
+  infoBg: '#F1F5F9',
+  infoText: '#475569',
 
-  glassBorder: '#E5E7EB',
-
-  // 기존 컴포넌트 호환용 토큰
   shadow: '#111827',
-  glassWhite: '#FFFFFF',
-  glassSoft: '#F8FAFC',
-  glassYellow: '#FFF7D6',
 
-  gray50: '#F9FAFB',
-  gray100: '#F3F4F6',
+  // Compatibility tokens used by older components.
+  glassBorder: '#E8E8E3',
+  glassWhite: '#FFFFFF',
+  glassSoft: '#FAFAF7',
+  glassYellow: '#FFF8DF',
+
+  gray50: '#FAFAFA',
+  gray100: '#F5F5F5',
   gray200: '#E5E7EB',
   gray300: '#D1D5DB',
   gray400: '#9CA3AF',

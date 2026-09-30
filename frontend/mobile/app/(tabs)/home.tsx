@@ -1,40 +1,26 @@
 import { useCallback, useMemo, useState } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowRight,
   BarChart3,
-  CalendarDays,
   ClipboardCheck,
   Plus,
   ReceiptText,
-  Sparkles,
-  TrendingUp,
-  WalletCards,
+  Smile,
 } from 'lucide-react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { GlassCard } from '@/components/GlassCard';
+import { WanderingMascot } from '@/components/mascot';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { mockTodayChallenge } from '@/constants/mockAiResult';
-import type { DailyChallenge } from '@/constants/mockTypes';
 import { useToast } from '@/contexts/ToastContext';
-import { getTodayChallengeFromApi } from '@/services/challengeService';
+import { getCurrentUser } from '@/services/authService';
+import { getTodayChallengesFromApi } from '@/services/challengeService';
 import { getMonthlyReportFromApi } from '@/services/reportService';
-import type { MonthlyReportResponse } from '@/types/api';
+import type { ApiChallenge, MeResponse, MonthlyReportResponse } from '@/types/api';
 import { formatWon } from '@/utils/aiFormat';
-import {
-  getBudgetBg,
-  getBudgetColor,
-  getBudgetLabel,
-  getBudgetSignalText,
-  getBudgetTone,
-  getFriendlyBudgetMessage,
-} from '@/utils/budgetStatus';
-import { getCategoryMeta } from '@/utils/categoryMeta';
 
 type MonthlyReportData = MonthlyReportResponse['data'];
 
@@ -47,550 +33,242 @@ const defaultReportData: MonthlyReportData = {
     budget_pressure: 0,
     transaction_count: 0,
   },
-  weekly_trend: [
-    { label: '월', amount: 0 },
-    { label: '화', amount: 0 },
-    { label: '수', amount: 0 },
-    { label: '목', amount: 0 },
-    { label: '금', amount: 0 },
-    { label: '토', amount: 0 },
-    { label: '일', amount: 0 },
-  ],
+  weekly_trend: [],
   evaluated_categories: [],
 };
 
 function getTodayLabel() {
   const now = new Date();
-
   return `${now.getMonth() + 1}월 ${now.getDate()}일`;
-}
-
-function getMissionStatusText(mission: DailyChallenge) {
-  if (mission.status === 'SUCCESS') {
-    return '완료';
-  }
-
-  if (mission.status === 'FAILED') {
-    return '종료';
-  }
-
-  return '진행 중';
 }
 
 export default function HomeScreen() {
   const { showToast } = useToast();
-
-  const [mission, setMission] = useState<DailyChallenge>(mockTodayChallenge);
   const [report, setReport] = useState<MonthlyReportData>(defaultReportData);
+  const [challenges, setChallenges] = useState<ApiChallenge[]>([]);
+  const [user, setUser] = useState<MeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const monthlySummary = report.monthly_summary;
-  const hasMonthlyTransactions = monthlySummary.transaction_count > 0;
+  const summary = report.monthly_summary;
+  const completedCount = useMemo(
+    () => challenges.filter((challenge) => challenge.status === 'SUCCESS').length,
+    [challenges]
+  );
+  const nextChallenge = useMemo(
+    () => challenges.find((challenge) => challenge.status === 'PENDING') ?? challenges[0] ?? null,
+    [challenges]
+  );
 
-  const missionMeta = getCategoryMeta(mission.category_name);
-  const MissionIcon = missionMeta.Icon;
-
-  const pressureTone = getBudgetTone(monthlySummary.budget_pressure);
-  const pressureColor = getBudgetColor(monthlySummary.budget_pressure);
-  const pressureBg = getBudgetBg(monthlySummary.budget_pressure);
-  const pressureLabel = getBudgetLabel(monthlySummary.budget_pressure);
-
-  const budgetGap =
-    monthlySummary.predicted_monthly_spend - monthlySummary.budget_limit;
-
-  const dailyAverage = useMemo(() => {
-    const today = new Date().getDate();
-
-    if (today <= 0) {
-      return 0;
-    }
-
-    return Math.round(monthlySummary.total_spend / today);
-  }, [monthlySummary.total_spend]);
-
-  const loadHomeData = async () => {
+  const loadHome = useCallback(async () => {
     try {
       setIsLoading(true);
-
-      const [missionResult, reportResult] = await Promise.allSettled([
-        getTodayChallengeFromApi(),
+      const [reportResult, challengeResult, userResult] = await Promise.allSettled([
         getMonthlyReportFromApi(),
+        getTodayChallengesFromApi(),
+        getCurrentUser(),
       ]);
 
-      if (missionResult.status === 'fulfilled') {
-        setMission(missionResult.value);
-      }
-
-      if (reportResult.status === 'fulfilled') {
-        setReport({
-          ...reportResult.value,
-          weekly_trend:
-            reportResult.value.weekly_trend.length > 0
-              ? reportResult.value.weekly_trend
-              : defaultReportData.weekly_trend,
-        });
-      }
+      if (reportResult.status === 'fulfilled') setReport(reportResult.value);
+      if (challengeResult.status === 'fulfilled') setChallenges(challengeResult.value);
+      if (userResult.status === 'fulfilled') setUser(userResult.value);
 
       if (
-        missionResult.status === 'rejected' ||
-        reportResult.status === 'rejected'
+        reportResult.status === 'rejected' ||
+        challengeResult.status === 'rejected' ||
+        userResult.status === 'rejected'
       ) {
-        showToast('홈 정보를 일부 불러오지 못했어요.');
+        showToast('일부 정보를 불러오지 못했어요.');
       }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useFocusEffect(
     useCallback(() => {
-      loadHomeData();
-    }, [])
+      loadHome();
+    }, [loadHome])
   );
 
   return (
-    <LinearGradient
-      colors={['#FFF8D8', '#FFFBF0', '#FFFFFF']}
-      style={styles.gradient}
-    >
-      <View style={styles.backgroundOrbLarge} />
-      <View style={styles.backgroundOrbSmall} />
-      <View style={styles.backgroundOrbTiny} />
-
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <AppScreenHeader
-          label="HOME"
-          title="오늘의 소비 흐름을 확인해요."
-          description={
-            isLoading
-              ? '오늘의 미션과 이번 달 지출 흐름을 불러오고 있어요.'
-              : `${getTodayLabel()} 기준으로 정리했습니다.`
-          }
-          Icon={Sparkles}
+          label="MONI"
+          title="오늘의 소비를 가볍게 확인해요."
+          description={isLoading ? '정보를 불러오고 있어요.' : `${getTodayLabel()} 기준`}
         />
 
-        <GlassCard delay={80} tone="butter" style={styles.missionCard}>
-          <View style={styles.missionTopRow}>
-            <View style={styles.missionIconBubble}>
-              <MissionIcon size={30} color={colors.text} strokeWidth={2.8} />
-            </View>
-
-            <View style={styles.missionTextBox}>
-              <View style={styles.missionLabelRow}>
-                <Text style={styles.cardLabel}>오늘의 미션</Text>
-                <Text style={styles.missionStatus}>
-                  {getMissionStatusText(mission)}
-                </Text>
-              </View>
-
-              <Text style={styles.missionTitle}>{mission.challenge_text}</Text>
-            </View>
+        <View style={styles.mascotMessageRow}>
+          <View style={styles.homeMascot}>
+            <WanderingMascot
+              enabled={false}
+              motionEnabled
+              size={78}
+              state="idle"
+              style={styles.fixedMascotMotion}
+            />
           </View>
-
-          <View style={styles.missionMetaRow}>
-            <View style={styles.missionMetaItem}>
-              <Text style={styles.metaLabel}>항목</Text>
-              <Text style={styles.metaValue}>{mission.category_name}</Text>
-            </View>
-
-            <View style={styles.missionMetaItem}>
-              <Text style={styles.metaLabel}>난이도</Text>
-              <Text style={styles.metaValue}>{mission.difficulty}</Text>
-            </View>
-
-            <View style={styles.missionMetaItem}>
-              <Text style={styles.metaLabel}>보상</Text>
-              <Text style={styles.metaValue}>+{mission.xp_reward} XP</Text>
-            </View>
+          <View style={styles.speechBubble}>
+            <View style={styles.speechTail} />
+            <Text style={styles.speechLabel}>Moni의 오늘 챌린지</Text>
+            <Text style={styles.speechText} numberOfLines={3}>
+              {nextChallenge?.challenge_text ?? '오늘의 소비 기록을 기다리고 있어요.'}
+            </Text>
+            <Pressable style={styles.speechLink} onPress={() => router.push('/(tabs)/challenge')}>
+              <Text style={styles.speechLinkText}>
+                {challenges.length > 0 ? `${challenges.length}개 챌린지 보기` : '챌린지 확인'}
+              </Text>
+              <ArrowRight size={14} color={colors.text} strokeWidth={2.5} />
+            </Pressable>
           </View>
-
-          <Pressable
-            style={styles.cardButton}
-            onPress={() => router.push('/(tabs)/challenge')}
-          >
-            <Text style={styles.cardButtonText}>미션 확인하기</Text>
-            <ArrowRight size={17} color={colors.text} strokeWidth={2.8} />
-          </Pressable>
-        </GlassCard>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>빠른 실행</Text>
-          <Text style={styles.sectionSubtitle}>
-            자주 쓰는 기능을 바로 열 수 있어요.
-          </Text>
         </View>
 
-        <View style={styles.quickGrid}>
+        <GlassCard tone="butter" style={styles.heroCard}>
+          <View style={styles.heroTop}>
+            <View>
+              <Text style={styles.eyebrow}>이번 달 현재 지출</Text>
+              <Text style={styles.heroValue}>{formatWon(summary.total_spend)}</Text>
+            </View>
+            <View style={styles.reportIcon}>
+              <BarChart3 size={21} color={colors.butterDeep} strokeWidth={2.5} />
+            </View>
+          </View>
+
+          <View style={styles.heroDivider} />
+
+          <View style={styles.heroBottom}>
+            <View>
+              <Text style={styles.miniLabel}>월말 예상</Text>
+              <Text style={styles.miniValue}>{formatWon(summary.predicted_monthly_spend)}</Text>
+            </View>
+            <Pressable onPress={() => router.push('/(tabs)/report')} style={styles.linkButton}>
+              <Text style={styles.linkText}>리포트 보기</Text>
+              <ArrowRight size={16} color={colors.text} strokeWidth={2.5} />
+            </Pressable>
+          </View>
+        </GlassCard>
+
+        <View style={styles.quickRow}>
           <Pressable
-            style={styles.quickCard}
+            style={({ pressed }) => [styles.quickButton, pressed && styles.pressed]}
             onPress={() => router.push('/(tabs)/transactions')}
           >
-            <View style={styles.quickIconBubble}>
-              <Plus size={21} color={colors.text} strokeWidth={2.8} />
+            <View style={styles.quickIcon}>
+              <Plus size={20} color={colors.text} strokeWidth={2.7} />
             </View>
-
-            <Text style={styles.quickTitle}>지출 추가</Text>
-            <Text style={styles.quickDescription}>방금 쓴 돈 기록</Text>
+            <View style={styles.quickCopy}>
+              <Text style={styles.quickTitle}>지출 기록</Text>
+              <Text style={styles.quickDescription}>새 소비 추가하기</Text>
+            </View>
           </Pressable>
 
           <Pressable
-            style={styles.quickCard}
-            onPress={() => router.push('/(tabs)/report')}
+            style={({ pressed }) => [styles.quickButton, pressed && styles.pressed]}
+            onPress={() => router.push('/(tabs)/character')}
           >
-            <View style={styles.quickIconBubble}>
-              <BarChart3 size={21} color={colors.text} strokeWidth={2.8} />
+            <View style={styles.quickIcon}>
+              <Smile size={20} color={colors.text} strokeWidth={2.6} />
             </View>
-
-            <Text style={styles.quickTitle}>리포트</Text>
-            <Text style={styles.quickDescription}>이번 달 흐름 보기</Text>
+            <View style={styles.quickCopy}>
+              <Text style={styles.quickTitle}>캐릭터</Text>
+              <Text style={styles.quickDescription}>
+                Lv.{user?.current_level ?? '-'} · {user?.current_points ?? 0}P
+              </Text>
+            </View>
           </Pressable>
         </View>
 
-        <GlassCard delay={180} style={styles.summaryCard}>
-          <View style={styles.sectionTitleRow}>
-            <WalletCards size={18} color={colors.butterDeep} strokeWidth={2.8} />
-            <Text style={styles.sectionTitle}>이번 달 한눈에 보기</Text>
-          </View>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>오늘의 챌린지</Text>
+          <Text style={styles.sectionCount}>{completedCount}/{challenges.length}</Text>
+        </View>
 
-          <View style={styles.summaryTopRow}>
-            <View>
-              <Text style={styles.cardLabel}>월말 예상 지출</Text>
-              <Text style={styles.summaryValue}>
-                {formatWon(monthlySummary.predicted_monthly_spend)}
-              </Text>
+        <GlassCard style={styles.challengeCard}>
+          <View style={styles.challengeRow}>
+            <View style={styles.challengeIcon}>
+              <ClipboardCheck size={22} color={colors.text} strokeWidth={2.5} />
             </View>
-
-            <View style={[styles.statusBadge, { backgroundColor: pressureBg }]}>
-              <Text style={[styles.statusBadgeText, { color: pressureColor }]}>
-                {pressureLabel}
+            <View style={styles.challengeCopy}>
+              <Text style={styles.challengeLabel}>
+                {challenges.length > 0 ? `${challenges.length}개의 챌린지가 있어요` : '오늘의 챌린지'}
               </Text>
-            </View>
-          </View>
-
-          <View style={styles.progressInfoRow}>
-            <Text style={styles.progressLabel}>예산 사용 예상</Text>
-            <Text style={[styles.progressValue, { color: pressureColor }]}>
-              {getBudgetSignalText(monthlySummary.budget_pressure)}
-            </Text>
-          </View>
-
-          <AnimatedProgressBar
-            progress={monthlySummary.budget_pressure}
-            tone={pressureTone}
-          />
-
-          <Text style={styles.summaryMessage}>
-            {hasMonthlyTransactions
-              ? getFriendlyBudgetMessage(monthlySummary.budget_pressure)
-              : '아직 이번 달 지출 기록이 없어요. 소비 탭에서 지출을 추가하면 월말 예상과 예산 상태가 표시됩니다.'}
-          </Text>
-
-          <View style={styles.metricList}>
-            <View style={styles.metricItem}>
-              <ReceiptText
-                size={16}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-              <Text style={styles.metricLabel}>현재 기록</Text>
-              <Text style={styles.metricValue}>
-                {formatWon(monthlySummary.total_spend)}
-              </Text>
-            </View>
-
-            <View style={styles.metricItem}>
-              <TrendingUp
-                size={16}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-              <Text style={styles.metricLabel}>하루 평균</Text>
-              <Text style={styles.metricValue}>{formatWon(dailyAverage)}</Text>
-            </View>
-
-            <View style={styles.metricItem}>
-              <CalendarDays
-                size={16}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
-              />
-              <Text style={styles.metricLabel}>
-                {budgetGap >= 0 ? '초과 예상' : '여유 예상'}
-              </Text>
-              <Text style={styles.metricValue}>
-                {formatWon(Math.abs(budgetGap))}
+              <Text style={styles.challengeText} numberOfLines={2}>
+                {nextChallenge?.challenge_text ?? '소비 기록이 쌓이면 맞춤 챌린지를 준비해요.'}
               </Text>
             </View>
           </View>
 
-          <Pressable
-            style={styles.cardButton}
-            onPress={() => router.push('/(tabs)/report')}
-          >
-            <Text style={styles.cardButtonText}>자세히 보기</Text>
-            <ArrowRight size={17} color={colors.text} strokeWidth={2.8} />
+          <Pressable style={styles.primaryButton} onPress={() => router.push('/(tabs)/challenge')}>
+            <Text style={styles.primaryButtonText}>챌린지 확인</Text>
+            <ArrowRight size={17} color={colors.text} strokeWidth={2.6} />
           </Pressable>
         </GlassCard>
+
+        {summary.transaction_count === 0 ? (
+          <View style={styles.notice}>
+            <ReceiptText size={18} color={colors.subText} strokeWidth={2.3} />
+            <Text style={styles.noticeText}>
+              이번 달 지출 기록이 아직 없어요. 소비를 기록하면 리포트와 개인화 챌린지가 채워집니다.
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  backgroundOrbLarge: {
-    display: 'none',
-  },
-  backgroundOrbSmall: {
-    display: 'none',
-  },
-  backgroundOrbTiny: {
-    display: 'none',
-  },
+  screen: { flex: 1, backgroundColor: colors.background },
   container: {
-    padding: 20,
-    paddingBottom: 128,
+    width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 20,
+    paddingTop: 24, paddingBottom: 112,
   },
-  missionCard: {
-    backgroundColor: 'rgba(255,248,216,0.42)',
+  mascotMessageRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  homeMascot: { width: 132, height: 92, alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
+  fixedMascotMotion: { width: '100%', height: '100%' },
+  speechBubble: {
+    flex: 1, minHeight: 116, borderWidth: 1, borderColor: colors.border, borderRadius: 20,
+    backgroundColor: colors.surface, padding: 15, justifyContent: 'center', position: 'relative',
   },
-  missionTopRow: {
-    flexDirection: 'row',
-    gap: 14,
-    marginBottom: 16,
+  speechTail: {
+    position: 'absolute', left: -7, top: 46, width: 14, height: 14,
+    backgroundColor: colors.surface, borderLeftWidth: 1, borderBottomWidth: 1,
+    borderColor: colors.border, transform: [{ rotate: '45deg' }],
   },
-  missionIconBubble: {
-    width: 62,
-    height: 62,
-    borderRadius: 24,
-    backgroundColor: colors.butterStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  missionTextBox: {
-    flex: 1,
-  },
-  missionLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 6,
-  },
-  cardLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
-  },
-  missionStatus: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: colors.butterPale,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  missionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 23,
-    lineHeight: 31,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.6,
-  },
-  missionMetaRow: {
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    flexDirection: 'row',
-    gap: 14,
-  },
-  missionMetaItem: {
-    flex: 1,
-  },
-  metaLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 5,
-  },
-  metaValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  cardButton: {
-    height: 50,
-    borderRadius: 19,
-    backgroundColor: colors.butterStrong,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 15,
-  },
-  cardButtonText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  sectionHeader: {
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 21,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 5,
-  },
-  sectionSubtitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.subText,
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
-  },
-  quickCard: {
-    flex: 1,
-    minHeight: 126,
-    borderRadius: 25,
-    padding: 15,
-    backgroundColor: 'rgba(255,255,255,0.34)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.42)',
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 9,
-    },
-    elevation: 3,
-  },
-  quickIconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 17,
-    backgroundColor: colors.butterPale,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  quickTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 5,
-  },
-  quickDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: colors.subText,
-  },
-  summaryCard: {
-    backgroundColor: 'rgba(255,255,255,0.36)',
-  },
-  summaryTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    alignItems: 'flex-start',
-    marginBottom: 18,
-  },
-  summaryValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 33,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.8,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  statusBadgeText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  progressInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 10,
-  },
-  progressLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.subText,
-  },
-  progressValue: {
-    flexShrink: 1,
-    textAlign: 'right',
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  summaryMessage: {
-    marginTop: 12,
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-  },
-  metricList: {
-    marginTop: 15,
-    gap: 8,
-  },
-  metricItem: {
-    minHeight: 54,
-    borderRadius: 18,
-    paddingHorizontal: 13,
-    backgroundColor: 'rgba(255,247,214,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  metricLabel: {
-    flex: 1,
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  metricValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
+  speechLabel: { fontFamily: typography.fontFamily, fontSize: 10.5, fontWeight: '900', color: colors.butterDeep, marginBottom: 5 },
+  speechText: { fontFamily: typography.fontFamily, fontSize: 14.5, lineHeight: 20, fontWeight: '800', color: colors.text },
+  speechLink: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
+  speechLinkText: { fontFamily: typography.fontFamily, fontSize: 11.5, fontWeight: '900', color: colors.text },
+  heroCard: { padding: 20 },
+  heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
+  eyebrow: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '800', color: colors.subText, marginBottom: 5 },
+  heroValue: { fontFamily: typography.fontFamily, fontSize: 31, fontWeight: '900', letterSpacing: -0.8, color: colors.text },
+  reportIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.butterPale, alignItems: 'center', justifyContent: 'center' },
+  heroDivider: { height: 1, backgroundColor: colors.borderSoft, marginVertical: 17 },
+  heroBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  miniLabel: { fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '700', color: colors.mutedText, marginBottom: 3 },
+  miniValue: { fontFamily: typography.fontFamily, fontSize: 17, fontWeight: '900', color: colors.text },
+  linkButton: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8 },
+  linkText: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '900', color: colors.text },
+  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  quickButton: { flex: 1, minHeight: 82, borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.surface, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pressed: { opacity: 0.68 },
+  quickIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.butterPale, alignItems: 'center', justifyContent: 'center' },
+  quickCopy: { flex: 1 },
+  quickTitle: { fontFamily: typography.fontFamily, fontSize: 14, fontWeight: '900', color: colors.text, marginBottom: 3 },
+  quickDescription: { fontFamily: typography.fontFamily, fontSize: 11.5, lineHeight: 16, color: colors.subText },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
+  sectionTitle: { fontFamily: typography.fontFamily, fontSize: 19, fontWeight: '900', color: colors.text },
+  sectionCount: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '900', color: colors.butterDeep },
+  challengeCard: { marginBottom: 12 },
+  challengeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  challengeIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  challengeCopy: { flex: 1 },
+  challengeLabel: { fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '800', color: colors.subText, marginBottom: 5 },
+  challengeText: { fontFamily: typography.fontFamily, fontSize: 16, lineHeight: 23, fontWeight: '900', color: colors.text },
+  primaryButton: { marginTop: 16, height: 48, borderRadius: 15, backgroundColor: colors.butterStrong, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  primaryButtonText: { fontFamily: typography.fontFamily, fontSize: 14, fontWeight: '900', color: colors.text },
+  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, paddingHorizontal: 4, paddingVertical: 7 },
+  noticeText: { flex: 1, fontFamily: typography.fontFamily, fontSize: 12.5, lineHeight: 19, color: colors.subText },
 });
