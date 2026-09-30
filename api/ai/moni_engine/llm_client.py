@@ -2,14 +2,15 @@
 llm_client.py
 =============
 
-챌린지 문구를 LLM(GPT)으로 생성하는 모듈.
+LLM(GPT) 호출을 담당하는 모듈.
 
 책임:
-- 규칙이 정한 한도/유형/맥락을 받아 자연스러운 문구 생성
+- GPT 호출 공통 처리 (call_llm) — 챌린지 문구, 리포트 총평이 함께 사용
+- 규칙이 정한 한도/유형/맥락을 받아 챌린지 문구 생성
 - 호출 실패/타임아웃 시 규칙 기반 문구로 폴백
 - 테스트 시 LLM 호출을 건너뛰는 모드 지원 (MONI_SKIP_LLM=1)
 
-금액 계산은 하지 않는다. 이미 정해진 한도를 "표현"만 한다.
+금액 계산은 하지 않는다. 이미 정해진 값을 "표현"만 한다.
 
 환경변수:
     OPENAI_API_KEY : GPT API 키 (필수, 없으면 폴백)
@@ -20,6 +21,7 @@ llm_client.py
 from __future__ import annotations
 
 import os
+from typing import Optional
 
 from moni_engine.challenge import rule_based_text
 
@@ -30,6 +32,56 @@ DEFAULT_MODEL = "gpt-4.1-mini"
 REQUEST_TIMEOUT = 10
 # 생성 문구 최대 토큰
 MAX_TOKENS = 100
+# 리포트 총평은 문장이 조금 더 길다
+REPORT_MAX_TOKENS = 200
+
+
+# ------------------------------------------------------------
+# 공통 LLM 호출 (챌린지 문구 / 리포트 총평이 공유)
+# ------------------------------------------------------------
+def call_llm(
+    prompt: str,
+    max_tokens: int = REPORT_MAX_TOKENS,
+    temperature: float = 0.8,
+) -> Optional[str]:
+    """
+    GPT를 호출해 생성된 텍스트를 반환한다.
+
+    실패(키 없음 / 네트워크 / 타임아웃 / 빈 응답)하면 None을 반환하며,
+    폴백 처리는 호출한 쪽의 책임이다.
+
+    MONI_SKIP_LLM=1 이면 호출하지 않고 즉시 None (테스트용).
+    """
+    if os.getenv("MONI_SKIP_LLM") == "1":
+        return None
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT)
+        model = os.getenv("MONI_LLM_MODEL", DEFAULT_MODEL)
+
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        return text or None
+
+    except Exception as e:
+        # 실패 원인을 남겨야 서버에서 조용한 폴백을 눈치챌 수 있다.
+        # (main의 d1a71b9 "fallback 디버그 로그 추가"에서 온 traceback 출력 유지)
+        import traceback
+
+        print(f"[LLM 폴백 발생] {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return None
 
 
 # ------------------------------------------------------------
@@ -94,42 +146,14 @@ def generate_challenge_text(
         "text_source": "llm" | "rule_fallback",
     }
     """
-    fallback = {
+    prompt = _build_prompt(category_name, challenge_type, daily_limit, context_label)
+    text = call_llm(prompt, max_tokens=MAX_TOKENS, temperature=0.8)
+
+    if text:
+        return {"challenge_text": text, "text_source": "llm"}
+
+    # 실패 / 키 없음 / 테스트 모드 → 규칙 기반 문구로 폴백
+    return {
         "challenge_text": rule_based_text(category_name, challenge_type, daily_limit),
         "text_source": "rule_fallback",
     }
-
-    # 테스트 모드: LLM 건너뛰고 폴백
-    if os.getenv("MONI_SKIP_LLM") == "1":
-        return fallback
-
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return fallback
-
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT)
-        model = os.getenv("MONI_LLM_MODEL", DEFAULT_MODEL)
-        prompt = _build_prompt(category_name, challenge_type, daily_limit, context_label)
-
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=MAX_TOKENS,
-            temperature=0.8,
-        )
-        text = resp.choices[0].message.content.strip()
-
-        # 빈 응답 방어
-        if not text:
-            return fallback
-
-        return {"challenge_text": text, "text_source": "llm"}
-
-    except Exception as e:
-        import traceback
-        print(f"[LLM 폴백 발생] {type(e).__name__}: {e}")
-        traceback.print_exc()
-        return fallback
