@@ -6,8 +6,8 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Flame,
-  RotateCcw,
   Sparkles,
+  RotateCcw,
   Trophy,
   WalletCards,
 } from 'lucide-react-native';
@@ -85,21 +85,6 @@ export default function ChallengeScreen() {
       ).length,
     [challenges]
   );
-  const evaluatedCount = useMemo(() => {
-    const metadataWithCandidates = challenges
-      .map(getMetadata)
-      .find((metadata) => Array.isArray(metadata.evaluated_categories));
-
-    if (metadataWithCandidates?.evaluated_categories) {
-      return metadataWithCandidates.evaluated_categories.length;
-    }
-
-    return new Set(
-      challenges
-        .filter((challenge) => getMetadata(challenge).challenge_origin !== 'streak')
-        .map((challenge) => challenge.category_name)
-    ).size;
-  }, [challenges]);
   const pendingChallenge = useMemo(
     () => challenges.find((challenge) => challenge.status === 'PENDING') ?? challenges[0] ?? null,
     [challenges]
@@ -195,11 +180,9 @@ export default function ChallengeScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <AppScreenHeader
           label="CHALLENGE"
-          title="오늘 할 수 있는 만큼만."
+          title="데일리 챌린지"
           description={
-            isLoading
-              ? '개인화 챌린지를 불러오고 있어요.'
-              : '오늘의 소비 예측과 예산 흐름을 바탕으로 정리했어요.'
+            isLoading ? '챌린지를 불러오고 있어요.' : undefined
           }
           Icon={ClipboardCheck}
         />
@@ -286,12 +269,6 @@ export default function ChallengeScreen() {
             </View>
           </View>
 
-          <View style={styles.policyNote}>
-            <Sparkles size={15} color={colors.butterDeep} strokeWidth={2.4} />
-            <Text style={styles.policyNoteText}>
-              예산 압박도 기준 최대 3개에 무지출 연속 보너스 1개가 추가될 수 있어요. 현재 분석 대상은 {evaluatedCount}개예요.
-            </Text>
-          </View>
         </View>
 
         {budgetGuide ? (
@@ -316,15 +293,11 @@ export default function ChallengeScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>오늘의 챌린지</Text>
-          <Text style={styles.sectionMeta}>오늘 {challenges.length}개 · 최대 4개</Text>
         </View>
 
         {challenges.length === 0 && !isLoading ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>오늘 표시할 챌린지가 없어요.</Text>
-            <Text style={styles.emptyDescription}>
-              소비 기록이나 챌린지 대상 카테고리가 없으면 챌린지가 생성되지 않을 수 있어요.
-            </Text>
           </View>
         ) : null}
 

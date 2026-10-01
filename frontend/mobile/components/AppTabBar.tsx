@@ -6,7 +6,6 @@ import {
   ClipboardCheck,
   Home,
   ReceiptText,
-  Smile,
   UserRound,
 } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -23,17 +22,15 @@ type TabMeta = {
 const TAB_META: Record<string, TabMeta> = {
   home: { label: '홈', Icon: Home },
   challenge: { label: '챌린지', Icon: ClipboardCheck },
-  character: { label: '캐릭터', Icon: Smile },
   transactions: { label: '소비', Icon: ReceiptText },
   report: { label: '리포트', Icon: BarChart3 },
   mypage: { label: '마이', Icon: UserRound },
 };
 
-// Requested order: Spend and Challenge swapped from phase 1, My page restored as a tab.
+// Character room is integrated into Home; keep only primary navigation tabs.
 const TAB_ORDER = [
   'home',
   'challenge',
-  'character',
   'transactions',
   'report',
   'mypage',
@@ -54,7 +51,6 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
           const isFocused = routeIndex === state.index;
           const meta = TAB_META[route.name];
           const Icon = meta.Icon;
-          const isCharacter = route.name === 'character';
           const descriptor = descriptors[route.key];
 
           const onPress = async () => {
@@ -88,12 +84,10 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
                 style={[
                   styles.iconBox,
                   isFocused && styles.iconBoxActive,
-                  isCharacter && styles.characterIconBox,
-                  isCharacter && isFocused && styles.characterIconBoxActive,
                 ]}
               >
                 <Icon
-                  size={isCharacter ? 22 : 19}
+                  size={19}
                   strokeWidth={isFocused ? 2.8 : 2.25}
                   color={isFocused ? colors.text : colors.mutedText}
                 />
