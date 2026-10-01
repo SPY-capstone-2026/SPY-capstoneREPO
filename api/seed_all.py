@@ -32,6 +32,8 @@ from models import (
     PointTransaction,
     ShopItem,
     UserInventory,
+    GeneratedReport,      # 👈 추가
+    BudgetChangeLog,       # 👈 추가
 )
 from auth import hash_password
 
@@ -81,14 +83,16 @@ CATEGORY_SETTINGS_SEED = [
 # ----------------------------------------
 def reset_all_tables(session: Session):
     tables_in_delete_order = [
-        UserInventory,       # user, shopitem을 참조
-        PointTransaction,    # user를 참조
-        DailyChallenge,      # user를 참조
-        AIDailyFeature,      # user를 참조
-        Transaction,         # user를 참조
-        UserCategorySetting, # user를 참조
-        ShopItem,            # 참조 없음 (UserInventory가 먼저 삭제되어야 안전)
-        Category,            # 참조 없음
+        UserInventory,
+        PointTransaction,
+        DailyChallenge,
+        AIDailyFeature,
+        Transaction,
+        UserCategorySetting,
+        ShopItem,
+        Category,
+        GeneratedReport,      # 👈 추가
+        BudgetChangeLog,      # 👈 이것도 같이 추가 (이것도 user_id 참조하는데 누락됐었음)
         User,                # 다른 테이블이 참조하는 부모 -> 반드시 마지막에 삭제
     ]
 
