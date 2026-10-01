@@ -2,12 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import {
   Bell,
-  ChevronRight,
   CreditCard,
   LogOut,
   Pencil,
-  Settings,
-  ShieldCheck,
   Target,
   UserRound,
   WalletCards,
@@ -28,7 +25,6 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { useToast } from '@/contexts/ToastContext';
 import { getCurrentUser, updateCurrentUser } from '@/services/authService';
-import { getCategoriesFromApi } from '@/services/categoryService';
 import {
   DEFAULT_APP_PREFERENCES,
   getAppPreferences,
@@ -93,11 +89,6 @@ export default function MyPageScreen() {
     DEFAULT_APP_PREFERENCES
   );
 
-  const [categorySummary, setCategorySummary] = useState({
-    total: 0,
-    challengeEnabled: 0,
-    averageAlertThreshold: 0,
-  });
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -131,10 +122,9 @@ export default function MyPageScreen() {
     try {
       setIsLoading(true);
 
-      const [userResult, categoriesResult, preferenceResult] =
+      const [userResult, preferenceResult] =
         await Promise.allSettled([
           getCurrentUser(),
-          getCategoriesFromApi(),
           getAppPreferences(),
         ]);
 
@@ -144,28 +134,6 @@ export default function MyPageScreen() {
         showToast('내 정보를 불러오지 못했어요.');
       }
 
-      if (categoriesResult.status === 'fulfilled') {
-        const categories = categoriesResult.value;
-        const challengeEnabled = categories.filter(
-          (item) => item.is_daily_challenge
-        ).length;
-
-        const averageAlertThreshold =
-          categories.length > 0
-            ? Math.round(
-                categories.reduce(
-                  (sum, item) => sum + Number(item.alert_threshold ?? 0),
-                  0
-                ) / categories.length
-              )
-            : 0;
-
-        setCategorySummary({
-          total: categories.length,
-          challengeEnabled,
-          averageAlertThreshold,
-        });
-      }
 
       if (preferenceResult.status === 'fulfilled') {
         setPreferences(preferenceResult.value);
@@ -254,13 +222,8 @@ export default function MyPageScreen() {
         showsVerticalScrollIndicator={false}
       >
         <AppScreenHeader
-          label="MY"
-          title="내 정보와 설정"
-          description={
-            isLoading
-              ? '설정을 불러오고 있어요.'
-              : '프로필, 예산·챌린지 기준, 알림 설정을 관리해요.'
-          }
+          label="MYPAGE"
+          title="마이페이지"
           Icon={UserRound}
         />
 
@@ -328,43 +291,6 @@ export default function MyPageScreen() {
           </Text>
         </View>
 
-        <Text style={styles.sectionTitle}>소비·챌린지 설정</Text>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.navigationCard,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.push('/(tabs)/transactions')}
-        >
-          <View style={styles.navIcon}>
-            <CreditCard size={20} color={colors.text} strokeWidth={2.5} />
-          </View>
-
-          <View style={styles.navCopy}>
-            <Text style={styles.navTitle}>예산과 챌린지 대상 관리</Text>
-            <Text style={styles.navDescription}>
-              카테고리별 월 예산, 챌린지 포함 여부, 예산 알림 기준을 수정해요.
-            </Text>
-
-            <View style={styles.summaryChips}>
-              <Text style={styles.summaryChip}>
-                카테고리 {categorySummary.total}개
-              </Text>
-              <Text style={styles.summaryChip}>
-                챌린지 {categorySummary.challengeEnabled}개
-              </Text>
-              {categorySummary.averageAlertThreshold > 0 ? (
-                <Text style={styles.summaryChip}>
-                  평균 알림 {categorySummary.averageAlertThreshold}%
-                </Text>
-              ) : null}
-            </View>
-          </View>
-
-          <ChevronRight size={18} color={colors.mutedText} strokeWidth={2.5} />
-        </Pressable>
-
         <Text style={styles.sectionTitle}>앱 설정</Text>
 
         <View style={styles.settingsCard}>
@@ -395,56 +321,6 @@ export default function MyPageScreen() {
             last
           />
 
-          <View style={styles.localSettingNote}>
-            <Settings size={14} color={colors.mutedText} strokeWidth={2.4} />
-            <Text style={styles.localSettingText}>
-              알림 구독 API가 아직 없어 위 3개는 이 기기에 저장됩니다. 예산 금액·알림
-              기준·챌린지 대상은 서버에 저장됩니다.
-            </Text>
-          </View>
-        </View>
-
-        <Text style={styles.sectionTitle}>계정</Text>
-
-        <View style={styles.accountCard}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.accountItem,
-              pressed && styles.pressed,
-            ]}
-            onPress={startEdit}
-          >
-            <View style={styles.accountIcon}>
-              <ShieldCheck size={19} color={colors.text} strokeWidth={2.5} />
-            </View>
-            <View style={styles.accountCopy}>
-              <Text style={styles.accountTitle}>개인정보 관리</Text>
-              <Text style={styles.accountDescription}>
-                이메일, 수입 유형, 수입일, 소비 성향을 수정해요.
-              </Text>
-            </View>
-            <ChevronRight size={18} color={colors.mutedText} strokeWidth={2.5} />
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.accountItem,
-              styles.accountItemBorder,
-              pressed && styles.pressed,
-            ]}
-            onPress={() => router.push('/(tabs)/transactions')}
-          >
-            <View style={styles.accountIcon}>
-              <CreditCard size={19} color={colors.text} strokeWidth={2.5} />
-            </View>
-            <View style={styles.accountCopy}>
-              <Text style={styles.accountTitle}>지출 데이터 관리</Text>
-              <Text style={styles.accountDescription}>
-                직접 입력한 지출 내역과 분류를 확인하고 수정해요.
-              </Text>
-            </View>
-            <ChevronRight size={18} color={colors.mutedText} strokeWidth={2.5} />
-          </Pressable>
         </View>
 
         <Pressable

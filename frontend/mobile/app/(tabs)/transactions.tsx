@@ -1,7 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
+  CalendarDays,
+  Check,
+  Pencil,
+  Plus,
+  ReceiptText,
+  Settings2,
+  Tag,
+  Trash2,
+  WalletCards,
+  X,
+} from 'lucide-react-native';
+import {
+  ActivityIndicator,
+  Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,1498 +24,1316 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import {
-  Edit3,
-  PencilLine,
-  Plus,
-  ReceiptText,
-  Target,
-  Trash2,
-  WalletCards,
-  X,
-} from 'lucide-react-native';
 
-import { AnimatedButton } from '@/components/AnimatedButton';
-import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
-import { EmptyState } from '@/components/EmptyState';
 import { GlassCard } from '@/components/GlassCard';
-import { JellySegmentedControl } from '@/components/JellySegmentedControl';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
-import { mockCategorySettings } from '@/constants/mockAiResult';
-import type { CategorySetting, Transaction } from '@/constants/mockTypes';
 import { useToast } from '@/contexts/ToastContext';
+import { apiRequest } from '@/services/apiClient';
+import type {
+  ApiCategorySetting,
+  ApiTransaction,
+  CategoriesResponse,
+  CreateTransactionResponse,
+  DeleteTransactionResponse,
+  TransactionsResponse,
+  UpdateCategoryResponse,
+  UpdateTransactionResponse,
+} from '@/types/api';
 import { formatWon } from '@/utils/aiFormat';
-import {
-  getBudgetBg,
-  getBudgetColor,
-  getBudgetLabel,
-  getBudgetSignalText,
-  getBudgetTone,
-  getFriendlyBudgetMessage,
-} from '@/utils/budgetStatus';
-import {
-  createTransactionFromApi,
-  deleteTransactionFromApi,
-  getTransactionsFromApi,
-  updateTransactionFromApi,
-} from '@/services/transactionService';
-import { getCategoryMeta } from '@/utils/categoryMeta';
-import {
-  getCategoriesFromApi,
-  updateCategoryFromApi,
-} from '@/services/categoryService';
 
-function formatAmountInput(value: string) {
-  const onlyNumber = value.replace(/[^0-9]/g, '');
+type ContentTab = 'recent' | 'budget';
 
-  if (!onlyNumber) {
-    return '';
-  }
+type TransactionDraft = {
+  tx_date: string;
+  amount: string;
+  merchant_name: string;
+  final_category: string;
+};
 
-  return Number(onlyNumber).toLocaleString('ko-KR');
-}
+type BudgetDraft = {
+  budget_limit: string;
+  alert_threshold: string;
+  is_daily_challenge: boolean;
+};
 
-function parseAmountInput(value: string) {
-  return Number(value.replace(/[^0-9]/g, ''));
-}
-
-function getBudgetInputValue(value: number) {
-  if (!value) {
-    return '';
-  }
-
-  return String(value);
-}
-
-function getTodayDateString() {
+function todayParam() {
   const now = new Date();
-
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-
   return `${year}-${month}-${day}`;
 }
 
-function getCurrentTimeString() {
-  const now = new Date();
-
-  const hour = String(now.getHours()).padStart(2, '0');
-  const minute = String(now.getMinutes()).padStart(2, '0');
-
-  return `${hour}:${minute}`;
+function currentMonthPrefix() {
+  return todayParam().slice(0, 7);
 }
 
-function isCurrentMonthDate(dateString: string) {
-  const now = new Date();
-  const [year, month] = dateString.split('-').map(Number);
-
-  return year === now.getFullYear() && month === now.getMonth() + 1;
+function formatDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+  return `${Number(match[2])}월 ${Number(match[3])}일`;
 }
 
-function isValidDateString(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return false;
-  }
-
-  const [year, month, day] = value.split('-').map(Number);
-
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() + 1 === month &&
-    date.getDate() === day
-  );
+function progressWidth(ratio: number) {
+  const percent = Math.min(Math.max(ratio * 100, 0), 100);
+  return `${percent}%` as `${number}%`;
 }
 
 export default function TransactionsScreen() {
   const { showToast } = useToast();
 
-  const [isTransactionLoading, setIsTransactionLoading] = useState(false);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
+  const [categories, setCategories] = useState<ApiCategorySetting[]>([]);
+  const [activeTab, setActiveTab] = useState<ContentTab>('budget');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [categories, setCategories] =
-    useState<CategorySetting[]>(mockCategorySettings);
+  const [createDraft, setCreateDraft] = useState<TransactionDraft>({
+    tx_date: todayParam(),
+    amount: '',
+    merchant_name: '',
+    final_category: '',
+  });
 
-  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(
-    null
+  const [editingTransaction, setEditingTransaction] =
+    useState<ApiTransaction | null>(null);
+  const [editDraft, setEditDraft] = useState<TransactionDraft>({
+    tx_date: todayParam(),
+    amount: '',
+    merchant_name: '',
+    final_category: '',
+  });
+
+  const [editingCategory, setEditingCategory] =
+    useState<ApiCategorySetting | null>(null);
+  const [budgetDraft, setBudgetDraft] = useState<BudgetDraft>({
+    budget_limit: '',
+    alert_threshold: '0.8',
+    is_daily_challenge: true,
+  });
+
+  const loadPage = useCallback(async () => {
+    try {
+      setIsLoading(true);
+
+      const [txResult, categoryResult] = await Promise.all([
+        apiRequest<TransactionsResponse>({
+          path: '/transactions',
+          method: 'GET',
+          auth: true,
+        }),
+        apiRequest<CategoriesResponse>({
+          path: '/categories',
+          method: 'GET',
+          auth: true,
+        }),
+      ]);
+
+      const nextTransactions = txResult.data ?? [];
+      const nextCategories = categoryResult.data ?? [];
+
+      setTransactions(nextTransactions);
+      setCategories(nextCategories);
+      setCreateDraft((current) => ({
+        ...current,
+        final_category:
+          current.final_category ||
+          nextCategories[0]?.category_name ||
+          '',
+      }));
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : '지출 정보를 불러오지 못했어요.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPage();
+    }, [loadPage])
   );
-
-  const [selectedBudgetCategoryId, setSelectedBudgetCategoryId] = useState<
-    string | null
-  >(null);
-  const [editBudgetLimit, setEditBudgetLimit] = useState('');
-  const [editAlertThreshold, setEditAlertThreshold] = useState('80');
-  const [editIsDailyChallenge, setEditIsDailyChallenge] = useState(false);
-  const [isCategorySaving, setIsCategorySaving] = useState(false);
-  const [isCategoryLoading, setIsCategoryLoading] = useState(false);
-
-  const [merchant, setMerchant] = useState('');
-  const [amountInput, setAmountInput] = useState('');
-  const [transactionDate, setTransactionDate] = useState(getTodayDateString());
-  const [category, setCategory] = useState(
-    mockCategorySettings[0].category_name
-  );
-
-  const selectedCategory =
-    categories[selectedCategoryIndex] ?? categories[0] ?? mockCategorySettings[0];
-
-  const selectedBudgetCategory =
-    categories.find((item) => item.id === selectedBudgetCategoryId) ??
-    categories[selectedCategoryIndex] ??
-    selectedCategory ??
-    null;
-
-  const selectedCategoryMeta = getCategoryMeta(selectedCategory.category_name);
-  const SelectedCategoryIcon = selectedCategoryMeta.Icon;
-
-  const selectedCategoryBudgetStatus = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-    const today = now.getDate();
-    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-
-    const actualSpend = transactions
-      .filter((transaction) => {
-        const [year, month] = transaction.tx_date.split('-').map(Number);
-
-        return (
-          year === currentYear &&
-          month === currentMonth &&
-          transaction.final_category === selectedCategory.category_name
-        );
-      })
-      .reduce((total, transaction) => total + transaction.amount, 0);
-
-    const predictedMonthlySpend =
-      actualSpend > 0 && today > 0
-        ? Math.round((actualSpend / today) * daysInMonth)
-        : 0;
-
-    const budgetPressure =
-      selectedCategory.budget_limit > 0
-        ? predictedMonthlySpend / selectedCategory.budget_limit
-        : 0;
-
-    const budgetGap = predictedMonthlySpend - selectedCategory.budget_limit;
-
-    return {
-      actualSpend,
-      predictedMonthlySpend,
-      budgetPressure,
-      budgetGap,
-    };
-  }, [transactions, selectedCategory]);
 
   const recentTransactions = useMemo(
-    () => transactions.slice(0, 6),
-    [transactions]
-  );
-
-  const totalAmount = useMemo(
     () =>
-      transactions
-        .filter((item) => isCurrentMonthDate(item.tx_date))
-        .reduce((sum, item) => sum + item.amount, 0),
+      [...transactions]
+        .sort((a, b) => {
+          const left = `${a.tx_date} ${a.tx_time ?? ''}`;
+          const right = `${b.tx_date} ${b.tx_time ?? ''}`;
+          return right.localeCompare(left);
+        })
+        .slice(0, 30),
     [transactions]
   );
 
-  const missionCategoryCount = useMemo(
-    () => categories.filter((item) => item.is_daily_challenge).length,
-    [categories]
-  );
+  const monthSpendByCategory = useMemo(() => {
+    const month = currentMonthPrefix();
+    const map = new Map<string, number>();
 
-  const selectedPressure = selectedCategoryBudgetStatus.budgetPressure;
-  const selectedPressureTone = getBudgetTone(selectedPressure);
-  const selectedPressureColor = getBudgetColor(selectedPressure);
-  const selectedPressureBg = getBudgetBg(selectedPressure);
-  const selectedPressureLabel = getBudgetLabel(selectedPressure);
+    transactions.forEach((transaction) => {
+      if (!transaction.tx_date.startsWith(month)) return;
 
-  const loadTransactions = async () => {
-    try {
-      setIsTransactionLoading(true);
+      map.set(
+        transaction.final_category,
+        (map.get(transaction.final_category) ?? 0) +
+          transaction.amount
+      );
+    });
 
-      const apiTransactions = await getTransactionsFromApi();
-      setTransactions(apiTransactions);
-    } catch {
-      setTransactions([]);
-      showToast('지출 내역을 불러오지 못했어요.');
-    } finally {
-      setIsTransactionLoading(false);
-    }
-  };
+    return map;
+  }, [transactions]);
 
-  const syncBudgetEditor = (targetCategory: CategorySetting) => {
-    setSelectedBudgetCategoryId(targetCategory.id);
-    setEditBudgetLimit(getBudgetInputValue(targetCategory.budget_limit));
-    setEditAlertThreshold(String(targetCategory.alert_threshold));
-    setEditIsDailyChallenge(targetCategory.is_daily_challenge);
-  };
-
-  const loadCategories = async () => {
-    try {
-      setIsCategoryLoading(true);
-
-      const apiCategories = await getCategoriesFromApi();
-
-      setCategories(apiCategories);
-
-      if (apiCategories.length > 0) {
-        const currentSelected = selectedBudgetCategoryId
-          ? apiCategories.find(
-              (item) => item.id === selectedBudgetCategoryId
-            )
-          : null;
-
-        const nextCategory = currentSelected ?? apiCategories[0];
-
-        const nextIndex = apiCategories.findIndex(
-          (item) => item.id === nextCategory.id
-        );
-
-        setSelectedCategoryIndex(nextIndex >= 0 ? nextIndex : 0);
-        setCategory(nextCategory.category_name);
-        syncBudgetEditor(nextCategory);
-      }
-    } catch {
-      showToast('카테고리 정보를 불러오지 못했어요.');
-    } finally {
-      setIsCategoryLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadTransactions();
-    loadCategories();
-  }, []);
-
-  const handleSaveBudgetCategory = async () => {
-    if (!selectedBudgetCategory) {
-      showToast('수정할 항목을 선택해 주세요.');
-      return;
-    }
-
-    const parsedBudgetLimit = parseAmountInput(editBudgetLimit);
-    const parsedAlertThreshold = Number(editAlertThreshold);
-
-    if (!Number.isInteger(parsedBudgetLimit) || parsedBudgetLimit < 0) {
-      showToast('월 예산을 숫자로 입력해 주세요.');
-      return;
-    }
+  const createTransaction = async () => {
+    const amount = Number(createDraft.amount.replace(/,/g, ''));
 
     if (
-      !Number.isInteger(parsedAlertThreshold) ||
-      parsedAlertThreshold < 1 ||
-      parsedAlertThreshold > 100
+      !createDraft.tx_date ||
+      !createDraft.merchant_name.trim() ||
+      !createDraft.final_category ||
+      !Number.isFinite(amount) ||
+      amount <= 0
     ) {
-      showToast('알림 기준은 1부터 100 사이로 입력해 주세요.');
+      showToast('날짜, 금액, 결제처, 카테고리를 확인해 주세요.');
       return;
     }
 
     try {
-      setIsCategorySaving(true);
+      setIsSaving(true);
 
-      const updatedCategory = await updateCategoryFromApi(
-        selectedBudgetCategory.id,
-        {
-          budget_limit: parsedBudgetLimit,
-          alert_threshold: parsedAlertThreshold,
-          is_daily_challenge: editIsDailyChallenge,
-        }
-      );
-
-      setCategories((prev) =>
-        prev.map((item) =>
-          item.id === updatedCategory.id ? updatedCategory : item
-        )
-      );
-
-      const nextIndex = categories.findIndex(
-        (item) => item.id === updatedCategory.id
-      );
-
-      if (nextIndex >= 0) {
-        setSelectedCategoryIndex(nextIndex);
-      }
-
-      setCategory(updatedCategory.category_name);
-      syncBudgetEditor(updatedCategory);
-
-      showToast('예산 설정을 저장했어요.');
-    } catch {
-      showToast('예산 설정을 저장하지 못했어요.');
-    } finally {
-      setIsCategorySaving(false);
-    }
-  };
-
-  const handleSelectCategory = (index: number) => {
-    const nextCategory = categories[index];
-
-    if (!nextCategory) {
-      return;
-    }
-
-    setSelectedCategoryIndex(index);
-    setCategory(nextCategory.category_name);
-    syncBudgetEditor(nextCategory);
-  };
-
-  const openAddModal = () => {
-    setEditingTransactionId(null);
-    setMerchant('');
-    setAmountInput('');
-    setTransactionDate(getTodayDateString());
-    setCategory(selectedCategory.category_name);
-    setIsModalVisible(true);
-  };
-
-  const openEditModal = (transaction: Transaction) => {
-    setEditingTransactionId(transaction.tx_id);
-    setMerchant(transaction.merchant_name);
-    setAmountInput(formatAmountInput(String(transaction.amount)));
-    setTransactionDate(transaction.tx_date);
-    setCategory(transaction.final_category);
-    setIsModalVisible(true);
-  };
-
-  const closeModal = () => {
-    setIsModalVisible(false);
-    setEditingTransactionId(null);
-    setMerchant('');
-    setAmountInput('');
-    setTransactionDate(getTodayDateString());
-    setCategory(selectedCategory.category_name);
-  };
-
-  const handleChangeAmount = (value: string) => {
-    setAmountInput(formatAmountInput(value));
-  };
-
-  const handleSaveTransaction = async () => {
-    if (!merchant.trim()) {
-      showToast('결제처를 입력해 주세요.');
-      return;
-    }
-
-    if (!amountInput.trim()) {
-      showToast('금액을 입력해 주세요.');
-      return;
-    }
-
-    const numericAmount = parseAmountInput(amountInput);
-
-    if (!numericAmount) {
-      showToast('금액을 숫자로 입력해 주세요.');
-      return;
-    }
-
-    if (!isValidDateString(transactionDate)) {
-      showToast('날짜는 YYYY-MM-DD 형식으로 입력해 주세요.');
-      return;
-    }
-
-    try {
-      if (editingTransactionId) {
-        const updatedTransaction = await updateTransactionFromApi(
-          editingTransactionId,
-          {
-            tx_date: transactionDate,
-            merchant_name: merchant.trim(),
-            amount: numericAmount,
-            final_category: category,
-            is_user_corrected: true,
-          }
-        );
-
-        setTransactions((prev) =>
-          prev.map((item) =>
-            item.tx_id === editingTransactionId ? updatedTransaction : item
-          )
-        );
-
-        showToast('지출 내역이 수정됐어요.');
-      } else {
-        const newTransaction = await createTransactionFromApi({
-          tx_date: transactionDate,
-          tx_time: getCurrentTimeString(),
-          amount: numericAmount,
-          merchant_name: merchant.trim(),
-          mydata_category: '직접 입력',
-          final_category: category,
+      await apiRequest<CreateTransactionResponse>({
+        path: '/transactions',
+        method: 'POST',
+        auth: true,
+        body: {
+          tx_date: createDraft.tx_date,
+          amount,
+          merchant_name: createDraft.merchant_name.trim(),
+          final_category: createDraft.final_category,
           is_user_corrected: true,
-        });
+        },
+      });
 
-        setTransactions((prev) => [newTransaction, ...prev]);
-        showToast(`${category}에 ${formatWon(numericAmount)} 지출이 추가됐어요.`);
-      }
-
-      const nextIndex = categories.findIndex(
-        (item) => item.category_name === category
+      setCreateDraft((current) => ({
+        ...current,
+        amount: '',
+        merchant_name: '',
+      }));
+      showToast('지출을 기록했어요.');
+      await loadPage();
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : '지출을 저장하지 못했어요.'
       );
-
-      if (nextIndex >= 0) {
-        const nextCategory = categories[nextIndex];
-
-        setSelectedCategoryIndex(nextIndex);
-        syncBudgetEditor(nextCategory);
-      }
-
-      closeModal();
-    } catch {
-      showToast('지출 내역을 저장하지 못했어요.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDeleteTransaction = async (transaction: Transaction) => {
-    const shouldDelete =
-      Platform.OS === 'web'
-        ? window.confirm(`${transaction.merchant_name} 지출을 삭제할까요?`)
-        : true;
+  const openTransactionEdit = (transaction: ApiTransaction) => {
+    setEditingTransaction(transaction);
+    setEditDraft({
+      tx_date: transaction.tx_date,
+      amount: String(transaction.amount),
+      merchant_name: transaction.merchant_name,
+      final_category: transaction.final_category,
+    });
+  };
 
-    if (!shouldDelete) {
+  const saveTransactionEdit = async () => {
+    if (!editingTransaction) return;
+
+    const amount = Number(editDraft.amount.replace(/,/g, ''));
+
+    if (
+      !editDraft.tx_date ||
+      !editDraft.merchant_name.trim() ||
+      !editDraft.final_category ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      showToast('수정할 지출 정보를 확인해 주세요.');
       return;
     }
 
     try {
-      await deleteTransactionFromApi(transaction.tx_id);
+      setIsSaving(true);
 
-      setTransactions((prev) =>
-        prev.filter((item) => item.tx_id !== transaction.tx_id)
+      await apiRequest<UpdateTransactionResponse>({
+        path: `/transactions/${editingTransaction.tx_id}`,
+        method: 'PATCH',
+        auth: true,
+        body: {
+          tx_date: editDraft.tx_date,
+          amount,
+          merchant_name: editDraft.merchant_name.trim(),
+          final_category: editDraft.final_category,
+          is_user_corrected: true,
+        },
+      });
+
+      setEditingTransaction(null);
+      showToast('지출을 수정했어요.');
+      await loadPage();
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : '지출을 수정하지 못했어요.'
       );
-
-      showToast('지출 내역을 삭제했어요.');
-    } catch {
-      showToast('지출 내역을 삭제하지 못했어요.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const renderTransactionCard = (transaction: Transaction, delay: number) => {
-    const transactionMeta = getCategoryMeta(transaction.final_category);
-    const TransactionIcon = transactionMeta.Icon;
-
-    return (
-      <GlassCard key={transaction.tx_id} delay={delay} tone="soft">
-        <View style={styles.transactionRow}>
-          <View style={styles.receiptIconBubble}>
-            <TransactionIcon size={20} color={colors.text} strokeWidth={2.8} />
-          </View>
-
-          <View style={styles.transactionMain}>
-            <View style={styles.transactionTitleRow}>
-              <Text style={styles.merchant}>{transaction.merchant_name}</Text>
-
-              <Text style={styles.transactionAmount}>
-                {formatWon(transaction.amount)}
-              </Text>
-            </View>
-
-            <Text style={styles.meta}>
-              {transaction.tx_date} {transaction.tx_time}
-            </Text>
-
-            <View style={styles.badgeRow}>
-              <Text style={styles.categoryBadge}>
-                {transaction.final_category}
-              </Text>
-
-              {transaction.is_user_corrected ? (
-                <Text style={styles.correctedBadge}>직접 수정</Text>
-              ) : (
-                <Text style={styles.rawBadge}>기본 분류</Text>
-              )}
-            </View>
-
-            <View style={styles.transactionActionRow}>
-              <Pressable
-                style={styles.transactionActionButton}
-                onPress={() => openEditModal(transaction)}
-              >
-                <Edit3 size={14} color={colors.butterBrown} strokeWidth={2.8} />
-                <Text style={styles.transactionActionText}>수정</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.transactionActionButton}
-                onPress={() => handleDeleteTransaction(transaction)}
-              >
-                <Trash2 size={14} color={colors.dangerText} strokeWidth={2.8} />
-                <Text
-                  style={[
-                    styles.transactionActionText,
-                    styles.deleteActionText,
-                  ]}
-                >
-                  삭제
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </GlassCard>
+  const deleteTransaction = (transaction: ApiTransaction) => {
+    Alert.alert(
+      '지출 삭제',
+      `${transaction.merchant_name} 지출 기록을 삭제할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await apiRequest<DeleteTransactionResponse>({
+                path: `/transactions/${transaction.tx_id}`,
+                method: 'DELETE',
+                auth: true,
+              });
+              showToast('지출 기록을 삭제했어요.');
+              await loadPage();
+            } catch (error) {
+              showToast(
+                error instanceof Error
+                  ? error.message
+                  : '지출을 삭제하지 못했어요.'
+              );
+            }
+          },
+        },
+      ]
     );
   };
 
-  return (
-    <LinearGradient
-      colors={['#FFF8D8', '#FFFBF0', '#FFFFFF']}
-      style={styles.gradient}
-    >
-      <View style={styles.backgroundOrbLarge} />
-      <View style={styles.backgroundOrbSmall} />
-      <View style={styles.backgroundOrbTiny} />
+  const openBudgetEdit = (category: ApiCategorySetting) => {
+    setEditingCategory(category);
+    setBudgetDraft({
+      budget_limit: String(category.budget_limit),
+      alert_threshold: String(category.alert_threshold),
+      is_daily_challenge: category.is_daily_challenge,
+    });
+  };
 
+  const saveBudgetEdit = async () => {
+    if (!editingCategory) return;
+
+    const budget = Number(budgetDraft.budget_limit.replace(/,/g, ''));
+    const threshold = Number(budgetDraft.alert_threshold);
+
+    if (
+      !Number.isFinite(budget) ||
+      budget < 0 ||
+      !Number.isFinite(threshold) ||
+      threshold < 0
+    ) {
+      showToast('예산과 알림 기준을 확인해 주세요.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+
+      await apiRequest<UpdateCategoryResponse>({
+        path: `/categories/${editingCategory.id}`,
+        method: 'PATCH',
+        auth: true,
+        body: {
+          budget_limit: budget,
+          alert_threshold: threshold,
+          is_daily_challenge: budgetDraft.is_daily_challenge,
+        },
+      });
+
+      setEditingCategory(null);
+      showToast('예산 설정을 저장했어요.');
+      await loadPage();
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : '예산 설정을 저장하지 못했어요.'
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <View style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <AppScreenHeader
-          label="SPENDING"
-          title="지출을 빠르게 기록하고 확인하세요."
-          description="가장 자주 쓰는 지출 추가와 최근 내역을 먼저 보여드립니다."
+          label="SPEND"
+          title="지출 기록"
           Icon={ReceiptText}
         />
 
-        <GlassCard delay={80} tone="butter" style={styles.actionCard}>
-          <View style={styles.actionTopRow}>
-            <View>
-              <Text style={styles.cardLabel}>이번 달 기록된 지출</Text>
-              <Text style={styles.totalAmount}>{formatWon(totalAmount)}</Text>
-            </View>
-
-            <View style={styles.walletBubble}>
-              <WalletCards size={27} color={colors.text} strokeWidth={2.8} />
-            </View>
-          </View>
-
-          <View style={styles.actionButtonRow}>
-            <Pressable style={styles.primaryActionButton} onPress={openAddModal}>
-              <View style={styles.actionIconBubble}>
-                <Plus size={21} color={colors.text} strokeWidth={2.8} />
-              </View>
-
-              <View style={styles.actionTextBox}>
-                <Text style={styles.actionTitle}>지출 추가</Text>
-                <Text style={styles.actionDescription}>방금 쓴 돈 기록</Text>
-              </View>
-            </Pressable>
-          </View>
-
-          <View style={styles.summaryLine}>
-            <View style={styles.summaryItem}>
-              <ReceiptText
-                size={15}
-                color={colors.butterBrown}
-                strokeWidth={2.8}
+        <GlassCard style={styles.createCard}>
+          <View style={styles.cardTitleRow}>
+            <View style={styles.cardTitleIcon}>
+              <Plus
+                size={18}
+                color={colors.butterDeep}
+                strokeWidth={2.6}
               />
-              <Text style={styles.summaryText}>{transactions.length}건 기록</Text>
             </View>
-
-            <View style={styles.summaryItem}>
-              <Target size={15} color={colors.butterBrown} strokeWidth={2.8} />
-              <Text style={styles.summaryText}>
-                미션 포함 {missionCategoryCount}개
-              </Text>
-            </View>
+            <Text style={styles.cardTitle}>새 지출</Text>
           </View>
-        </GlassCard>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>최근 지출</Text>
-          <Text style={styles.sectionSubtitle}>
-            최근 내역만 보여드립니다. 잘못된 항목은 바로 수정할 수 있습니다.
-          </Text>
-        </View>
-
-        {recentTransactions.length === 0 ? (
-          <GlassCard delay={160} tone="soft">
-            <EmptyState
-              title="아직 지출 기록이 없어요."
-              description="오늘 쓴 돈을 하나만 기록해도 리포트와 미션이 더 정확해집니다."
-              actionLabel="지출 추가하기"
-              onAction={openAddModal}
-              Icon={PencilLine}
-            />
-          </GlassCard>
-        ) : (
-          recentTransactions.map((transaction, index) =>
-            renderTransactionCard(transaction, 160 + index * 50)
-          )
-        )}
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>항목별 예산 상태</Text>
-          <Text style={styles.sectionSubtitle}>
-            확인할 항목을 선택하면 예산 흐름만 간단히 보여드립니다.
-          </Text>
-        </View>
-
-        {categories.length === 0 ? (
-          <GlassCard delay={420} tone="soft">
-            <EmptyState
-              title="예산 항목을 불러오지 못했어요."
-              description="잠시 후 다시 시도해 주세요. 계정 생성 후 기본 예산 항목이 자동으로 준비됩니다."
-              actionLabel="다시 불러오기"
-              onAction={loadCategories}
-              Icon={Target}
-            />
-          </GlassCard>
-        ) : (
-          <>
-            <JellySegmentedControl
-              items={categories.map((item) => item.category_name)}
-              selectedIndex={selectedCategoryIndex}
-              onChange={handleSelectCategory}
-            />
-
-            <GlassCard delay={420} tone="butter" style={styles.categoryCard}>
-              <View style={styles.categoryTopRow}>
-                <View style={styles.categoryIconBubble}>
-                  <SelectedCategoryIcon
-                    size={27}
-                    color={colors.text}
-                    strokeWidth={2.8}
-                  />
-                </View>
-
-                <View style={styles.categoryTitleBox}>
-                  <Text style={styles.cardLabel}>선택한 항목</Text>
-                  <Text style={styles.categoryTitle}>
-                    {selectedCategory.category_name}
-                  </Text>
-                  <Text style={styles.categoryDescription}>
-                    {selectedCategoryMeta.description}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.rateBadge,
-                    {
-                      backgroundColor: selectedPressureBg,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.rateBadgeText,
-                      {
-                        color: selectedPressureColor,
-                      },
-                    ]}
-                  >
-                    {selectedPressureLabel}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.categoryMetricList}>
-                <View style={styles.categoryMetricItem}>
-                  <Text style={styles.metricLabel}>월 예산</Text>
-                  <Text style={styles.metricValue}>
-                    {formatWon(selectedCategory.budget_limit)}
-                  </Text>
-                </View>
-
-                <View style={styles.categoryMetricItem}>
-                  <Text style={styles.metricLabel}>기록된 지출</Text>
-                  <Text style={styles.metricValue}>
-                    {formatWon(selectedCategoryBudgetStatus.actualSpend)}
-                  </Text>
-                </View>
-
-                <View style={styles.categoryMetricItem}>
-                  <Text style={styles.metricLabel}>월말 예상</Text>
-                  <Text style={styles.metricValue}>
-                    {selectedCategoryBudgetStatus.predictedMonthlySpend > 0
-                      ? formatWon(
-                          selectedCategoryBudgetStatus.predictedMonthlySpend
-                        )
-                      : '기록 부족'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.progressInfoRow}>
-                <Text style={styles.progressLabel}>예산 사용 예상</Text>
-                <Text
-                  style={[
-                    styles.progressValue,
-                    {
-                      color: selectedPressureColor,
-                    },
-                  ]}
-                >
-                  {getBudgetSignalText(selectedPressure)}
-                </Text>
-              </View>
-
-              <AnimatedProgressBar
-                progress={selectedPressure}
-                tone={selectedPressureTone}
-              />
-
-              <Text style={styles.categoryStatusText}>
-                {getFriendlyBudgetMessage(selectedPressure)}
-              </Text>
-            </GlassCard>
-
-            {selectedBudgetCategory ? (
-              <GlassCard
-                delay={470}
-                tone="butter"
-                style={styles.budgetEditorCard}
-              >
-                <View style={styles.budgetEditorHeader}>
-                  <View>
-                    <Text style={styles.cardLabel}>예산 설정</Text>
-                    <Text style={styles.budgetEditorTitle}>
-                      {selectedBudgetCategory.category_name}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.budgetEditorBadge}>
-                    {selectedBudgetCategory.is_daily_challenge
-                      ? '미션 포함'
-                      : '미션 제외'}
-                  </Text>
-                </View>
-
-                <Text style={styles.budgetEditLabel}>월 예산</Text>
-                <TextInput
-                  style={styles.budgetEditInput}
-                  value={editBudgetLimit}
-                  onChangeText={setEditBudgetLimit}
-                  keyboardType="number-pad"
-                  placeholder="예: 30000"
-                  placeholderTextColor={colors.mutedText}
+          <View style={styles.formGrid}>
+            <View style={[styles.field, styles.gridField]}>
+              <Text style={styles.fieldLabel}>날짜</Text>
+              <View style={styles.inputWithIcon}>
+                <CalendarDays
+                  size={16}
+                  color={colors.mutedText}
+                  strokeWidth={2.2}
                 />
-
-                <Text style={styles.budgetEditHint}>
-                  현재 설정: {formatWon(selectedBudgetCategory.budget_limit)}
-                </Text>
-
-                <Text style={styles.budgetEditLabel}>알림 기준</Text>
-                <View style={styles.thresholdRow}>
-                  <TextInput
-                    style={[styles.budgetEditInput, styles.thresholdInput]}
-                    value={editAlertThreshold}
-                    onChangeText={setEditAlertThreshold}
-                    keyboardType="number-pad"
-                    placeholder="80"
-                    placeholderTextColor={colors.mutedText}
-                  />
-                  <Text style={styles.thresholdSuffix}>%</Text>
-                </View>
-
-                <View style={styles.budgetSwitchRow}>
-                  <View style={styles.budgetSwitchTextBox}>
-                    <Text style={styles.budgetSwitchTitle}>
-                      오늘의 미션 후보에 포함
-                    </Text>
-                    <Text style={styles.budgetSwitchDescription}>
-                      켜두면 이 항목도 소비 미션 생성에 사용할 수 있습니다.
-                    </Text>
-                  </View>
-
-                  <Switch
-                    value={editIsDailyChallenge}
-                    onValueChange={setEditIsDailyChallenge}
-                    trackColor={{
-                      false: 'rgba(122,111,91,0.18)',
-                      true: colors.butterSoft,
-                    }}
-                    thumbColor={colors.backgroundWhite}
-                  />
-                </View>
-
-                <Pressable
-                  style={[
-                    styles.budgetSaveButton,
-                    isCategorySaving && styles.disabledBudgetSaveButton,
-                  ]}
-                  onPress={handleSaveBudgetCategory}
-                  disabled={isCategorySaving}
-                >
-                  <Text style={styles.budgetSaveButtonText}>
-                    {isCategorySaving ? '저장 중...' : '예산 설정 저장'}
-                  </Text>
-                </Pressable>
-              </GlassCard>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
-
-      <Modal
-        visible={isModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>
-                  {editingTransactionId ? '지출 수정' : '지출 추가'}
-                </Text>
-                <Text style={styles.modalSubtitle}>
-                  날짜, 결제처, 금액, 항목을 입력하면 됩니다.
-                </Text>
+                <TextInput
+                  value={createDraft.tx_date}
+                  onChangeText={(value) =>
+                    setCreateDraft((current) => ({
+                      ...current,
+                      tx_date: value,
+                    }))
+                  }
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.mutedText}
+                  style={styles.inputFlex}
+                />
               </View>
-
-              <Pressable style={styles.modalCloseButton} onPress={closeModal}>
-                <X size={20} color={colors.text} strokeWidth={2.8} />
-              </Pressable>
             </View>
 
-            <Text style={styles.inputLabel}>날짜</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.mutedText}
-              keyboardType="numbers-and-punctuation"
-              value={transactionDate}
-              onChangeText={setTransactionDate}
-            />
+            <View style={[styles.field, styles.gridField]}>
+              <Text style={styles.fieldLabel}>금액</Text>
+              <TextInput
+                value={createDraft.amount}
+                onChangeText={(value) =>
+                  setCreateDraft((current) => ({
+                    ...current,
+                    amount: value,
+                  }))
+                }
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={colors.mutedText}
+                style={styles.input}
+              />
+            </View>
+          </View>
 
-            <Pressable
-              style={styles.dateQuickButton}
-              onPress={() => setTransactionDate(getTodayDateString())}
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>결제처</Text>
+            <TextInput
+              value={createDraft.merchant_name}
+              onChangeText={(value) =>
+                setCreateDraft((current) => ({
+                  ...current,
+                  merchant_name: value,
+                }))
+              }
+              placeholder="예: 편의점"
+              placeholderTextColor={colors.mutedText}
+              style={styles.input}
+            />
+          </View>
+
+          <View style={styles.categoryField}>
+            <Text style={styles.fieldLabel}>카테고리</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryChips}
             >
-              <Text style={styles.dateQuickButtonText}>오늘 날짜로 설정</Text>
-            </Pressable>
-
-            <Text style={styles.inputLabel}>결제처</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="예: 스타벅스"
-              placeholderTextColor={colors.mutedText}
-              value={merchant}
-              onChangeText={setMerchant}
-            />
-
-            <Text style={styles.inputLabel}>금액</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="예: 5,800"
-              placeholderTextColor={colors.mutedText}
-              keyboardType="number-pad"
-              value={amountInput}
-              onChangeText={handleChangeAmount}
-            />
-
-            <Text style={styles.inputLabel}>항목</Text>
-            <View style={styles.categoryChipGrid}>
-              {categories.map((item) => {
-                const isSelected = category === item.category_name;
-                const categoryMeta = getCategoryMeta(item.category_name);
-                const CategoryIcon = categoryMeta.Icon;
+              {categories.map((category) => {
+                const selected =
+                  createDraft.final_category === category.category_name;
 
                 return (
                   <Pressable
-                    key={item.id}
+                    key={category.id}
+                    onPress={() =>
+                      setCreateDraft((current) => ({
+                        ...current,
+                        final_category: category.category_name,
+                      }))
+                    }
                     style={[
                       styles.categoryChip,
-                      isSelected && styles.selectedCategoryChip,
+                      selected && styles.categoryChipActive,
                     ]}
-                    onPress={() => setCategory(item.category_name)}
                   >
-                    <CategoryIcon
-                      size={16}
-                      color={isSelected ? colors.text : colors.butterBrown}
-                      strokeWidth={2.8}
+                    <Tag
+                      size={10}
+                      color={
+                        selected
+                          ? colors.butterDeep
+                          : colors.mutedText
+                      }
+                      strokeWidth={2.3}
                     />
                     <Text
                       style={[
                         styles.categoryChipText,
-                        isSelected && styles.selectedCategoryChipText,
+                        selected && styles.categoryChipTextActive,
                       ]}
                     >
-                      {item.category_name}
+                      {category.category_name}
                     </Text>
                   </Pressable>
                 );
               })}
+            </ScrollView>
+          </View>
+
+          <Pressable
+            disabled={isSaving}
+            onPress={createTransaction}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.pressed,
+              isSaving && styles.disabled,
+            ]}
+          >
+            {isSaving ? (
+              <ActivityIndicator
+                size="small"
+                color={colors.text}
+              />
+            ) : (
+              <>
+                <Check
+                  size={17}
+                  color={colors.text}
+                  strokeWidth={2.7}
+                />
+                <Text style={styles.primaryButtonText}>
+                  기록하기
+                </Text>
+              </>
+            )}
+          </Pressable>
+        </GlassCard>
+
+        <View style={styles.tabs}>
+          <Pressable
+            onPress={() => setActiveTab('budget')}
+            style={[
+              styles.tab,
+              activeTab === 'budget' && styles.tabActive,
+            ]}
+          >
+            <WalletCards
+              size={16}
+              color={
+                activeTab === 'budget'
+                  ? colors.text
+                  : colors.mutedText
+              }
+              strokeWidth={2.4}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'budget' && styles.tabTextActive,
+              ]}
+            >
+              항목별 예산 상태
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setActiveTab('recent')}
+            style={[
+              styles.tab,
+              activeTab === 'recent' && styles.tabActive,
+            ]}
+          >
+            <ReceiptText
+              size={16}
+              color={
+                activeTab === 'recent'
+                  ? colors.text
+                  : colors.mutedText
+              }
+              strokeWidth={2.4}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'recent' && styles.tabTextActive,
+              ]}
+            >
+              최근 지출
+            </Text>
+          </Pressable>
+        </View>
+
+        {isLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator
+              size="small"
+              color={colors.butterDeep}
+            />
+          </View>
+        ) : activeTab === 'recent' ? (
+          <View style={styles.list}>
+            {recentTransactions.length > 0 ? (
+              recentTransactions.map((transaction) => (
+                <GlassCard
+                  key={transaction.tx_id}
+                  style={styles.transactionCard}
+                >
+                  <View style={styles.transactionMain}>
+                    <View style={styles.transactionCopy}>
+                      <Text style={styles.merchant}>
+                        {transaction.merchant_name}
+                      </Text>
+                      <Text style={styles.transactionMeta}>
+                        {formatDate(transaction.tx_date)} ·{' '}
+                        {transaction.final_category}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.amount}>
+                      {formatWon(transaction.amount)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.rowActions}>
+                    <Pressable
+                      onPress={() => openTransactionEdit(transaction)}
+                      style={({ pressed }) => [
+                        styles.secondaryButton,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Pencil
+                        size={14}
+                        color={colors.text}
+                        strokeWidth={2.4}
+                      />
+                      <Text style={styles.secondaryButtonText}>
+                        수정
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => deleteTransaction(transaction)}
+                      style={({ pressed }) => [
+                        styles.deleteButton,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Trash2
+                        size={14}
+                        color={colors.dangerText}
+                        strokeWidth={2.4}
+                      />
+                      <Text style={styles.deleteButtonText}>
+                        삭제
+                      </Text>
+                    </Pressable>
+                  </View>
+                </GlassCard>
+              ))
+            ) : (
+              <GlassCard style={styles.emptyCard}>
+                <Text style={styles.emptyText}>
+                  기록된 지출이 없어요.
+                </Text>
+              </GlassCard>
+            )}
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {categories.length > 0 ? (
+              categories.map((category) => {
+                const spent =
+                  monthSpendByCategory.get(category.category_name) ?? 0;
+                const ratio =
+                  category.budget_limit > 0
+                    ? spent / category.budget_limit
+                    : 0;
+                const isOver = ratio > 1;
+
+                return (
+                  <GlassCard
+                    key={category.id}
+                    style={styles.budgetCard}
+                  >
+                    <View style={styles.budgetTop}>
+                      <View>
+                        <Text style={styles.budgetCategory}>
+                          {category.category_name}
+                        </Text>
+                        <Text style={styles.budgetAmount}>
+                          {formatWon(spent)} /{' '}
+                          {formatWon(category.budget_limit)}
+                        </Text>
+                      </View>
+
+                      <Pressable
+                        onPress={() => openBudgetEdit(category)}
+                        style={({ pressed }) => [
+                          styles.iconButton,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Settings2
+                          size={17}
+                          color={colors.text}
+                          strokeWidth={2.4}
+                        />
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          isOver && styles.progressFillDanger,
+                          {
+                            width: progressWidth(ratio),
+                          },
+                        ]}
+                      />
+                    </View>
+
+                    <View style={styles.budgetBottom}>
+                      <Text
+                        style={[
+                          styles.budgetRatio,
+                          isOver && styles.budgetRatioDanger,
+                        ]}
+                      >
+                        {Math.round(ratio * 100)}% 사용
+                      </Text>
+                      <Text style={styles.budgetFlag}>
+                        {category.is_daily_challenge
+                          ? '챌린지 대상'
+                          : '챌린지 제외'}
+                      </Text>
+                    </View>
+                  </GlassCard>
+                );
+              })
+            ) : (
+              <GlassCard style={styles.emptyCard}>
+                <Text style={styles.emptyText}>
+                  표시할 예산 설정이 없어요.
+                </Text>
+              </GlassCard>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      <Modal
+        visible={Boolean(editingTransaction)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingTransaction(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>지출 수정</Text>
+              <Pressable
+                onPress={() => setEditingTransaction(null)}
+                style={styles.modalClose}
+              >
+                <X size={18} color={colors.text} />
+              </Pressable>
             </View>
 
-            <AnimatedButton
-              title={editingTransactionId ? '수정 완료' : '추가하기'}
-              onPress={handleSaveTransaction}
-              style={styles.modalButton}
+            <Text style={styles.fieldLabel}>날짜</Text>
+            <TextInput
+              value={editDraft.tx_date}
+              onChangeText={(value) =>
+                setEditDraft((current) => ({
+                  ...current,
+                  tx_date: value,
+                }))
+              }
+              style={styles.input}
             />
 
-            <AnimatedButton
-              title="닫기"
-              variant="ghost"
-              onPress={closeModal}
-              style={styles.modalSecondaryButton}
+            <Text style={styles.fieldLabel}>금액</Text>
+            <TextInput
+              value={editDraft.amount}
+              onChangeText={(value) =>
+                setEditDraft((current) => ({
+                  ...current,
+                  amount: value,
+                }))
+              }
+              keyboardType="numeric"
+              style={styles.input}
             />
+
+            <Text style={styles.fieldLabel}>결제처</Text>
+            <TextInput
+              value={editDraft.merchant_name}
+              onChangeText={(value) =>
+                setEditDraft((current) => ({
+                  ...current,
+                  merchant_name: value,
+                }))
+              }
+              style={styles.input}
+            />
+
+            <Text style={styles.fieldLabel}>카테고리</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryChips}
+            >
+              {categories.map((category) => {
+                const selected =
+                  editDraft.final_category === category.category_name;
+                return (
+                  <Pressable
+                    key={category.id}
+                    onPress={() =>
+                      setEditDraft((current) => ({
+                        ...current,
+                        final_category: category.category_name,
+                      }))
+                    }
+                    style={[
+                      styles.categoryChip,
+                      selected && styles.categoryChipActive,
+                    ]}
+                  >
+                    <Tag
+                      size={10}
+                      color={
+                        selected
+                          ? colors.butterDeep
+                          : colors.mutedText
+                      }
+                      strokeWidth={2.3}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        selected && styles.categoryChipTextActive,
+                      ]}
+                    >
+                      {category.category_name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Pressable
+              disabled={isSaving}
+              onPress={saveTransactionEdit}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>저장</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
-    </LinearGradient>
+
+      <Modal
+        visible={Boolean(editingCategory)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingCategory(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingCategory?.category_name ?? ''} 예산
+              </Text>
+              <Pressable
+                onPress={() => setEditingCategory(null)}
+                style={styles.modalClose}
+              >
+                <X size={18} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.fieldLabel}>월 예산</Text>
+            <TextInput
+              value={budgetDraft.budget_limit}
+              onChangeText={(value) =>
+                setBudgetDraft((current) => ({
+                  ...current,
+                  budget_limit: value,
+                }))
+              }
+              keyboardType="numeric"
+              style={styles.input}
+            />
+
+            <Text style={styles.fieldLabel}>알림 기준</Text>
+            <TextInput
+              value={budgetDraft.alert_threshold}
+              onChangeText={(value) =>
+                setBudgetDraft((current) => ({
+                  ...current,
+                  alert_threshold: value,
+                }))
+              }
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <View style={styles.switchRow}>
+              <View>
+                <Text style={styles.switchTitle}>데일리 챌린지</Text>
+                <Text style={styles.switchMeta}>
+                  이 카테고리를 챌린지 생성 대상으로 사용
+                </Text>
+              </View>
+
+              <Switch
+                value={budgetDraft.is_daily_challenge}
+                onValueChange={(value) =>
+                  setBudgetDraft((current) => ({
+                    ...current,
+                    is_daily_challenge: value,
+                  }))
+                }
+                trackColor={{
+                  false: colors.gray300,
+                  true: colors.butterSoft,
+                }}
+                thumbColor={colors.surface}
+              />
+            </View>
+
+            <Pressable
+              disabled={isSaving}
+              onPress={saveBudgetEdit}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>저장</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
+  screen: {
     flex: 1,
-  },
-  backgroundOrbLarge: {
-    display: 'none',
-  },
-  backgroundOrbSmall: {
-    display: 'none',
-  },
-  backgroundOrbTiny: {
-    display: 'none',
+    backgroundColor: colors.background,
   },
   container: {
-    padding: 20,
-    paddingBottom: 128,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 112,
   },
-  actionCard: {
-    backgroundColor: 'rgba(255,248,216,0.42)',
+  createCard: {
+    padding: 18,
   },
-  actionTopRow: {
+  cardTitleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    alignItems: 'flex-start',
-    marginBottom: 18,
+    alignItems: 'center',
+    gap: 9,
+    marginBottom: 16,
   },
-  cardLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
-    marginBottom: 8,
-  },
-  totalAmount: {
-    fontFamily: typography.fontFamily,
-    fontSize: 34,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.8,
-  },
-  walletBubble: {
-    width: 58,
-    height: 58,
-    borderRadius: 23,
-    backgroundColor: colors.butterStrong,
+  cardTitleIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: colors.butterPale,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionButtonRow: {
+  cardTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  formGrid: {
+    flexDirection: 'row',
     gap: 10,
-    marginBottom: 14,
   },
-  primaryActionButton: {
-    minHeight: 72,
-    borderRadius: 24,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    backgroundColor: colors.butterStrong,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  actionIconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.38)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionTextBox: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  actionDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  summaryLine: {
-    paddingTop: 13,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    flexDirection: 'row',
-    gap: 14,
-    flexWrap: 'wrap',
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  summaryText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  sectionHeader: {
-    marginTop: 8,
+  field: {
     marginBottom: 12,
   },
-  sectionTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 21,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 5,
+  gridField: {
+    flex: 1,
+    minWidth: 0,
   },
-  sectionSubtitle: {
+  fieldLabel: {
+    marginBottom: 6,
     fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 10,
+    fontWeight: '800',
     color: colors.subText,
   },
-  transactionRow: {
-    flexDirection: 'row',
-    gap: 13,
+  input: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: colors.text,
+    marginBottom: 12,
   },
-  receiptIconBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 18,
-    backgroundColor: colors.butterPale,
+  inputWithIcon: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
+    gap: 7,
+  },
+  inputFlex: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 10,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    color: colors.text,
+  },
+  categoryField: {
+    marginTop: 2,
+    marginBottom: 14,
+  },
+  categoryChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingRight: 4,
+    paddingVertical: 2,
+  },
+  categoryChip: {
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  categoryChipActive: {
+    borderColor: colors.butterSoft,
+    backgroundColor: colors.butterPale,
+  },
+  categoryChipText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '800',
+    color: colors.subText,
+  },
+  categoryChipTextActive: {
+    color: colors.text,
+  },
+  primaryButton: {
+    minHeight: 44,
+    borderRadius: 13,
+    backgroundColor: colors.butterStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 14,
+  },
+  primaryButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  tabs: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    padding: 4,
+    backgroundColor: colors.surfaceMuted,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tabActive: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  tabText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.mutedText,
+  },
+  tabTextActive: {
+    color: colors.text,
+  },
+  list: {
+    gap: 0,
+  },
+  transactionCard: {
+    padding: 15,
   },
   transactionMain: {
-    flex: 1,
-  },
-  transactionTitleRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
-    alignItems: 'flex-start',
-    marginBottom: 4,
+  },
+  transactionCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   merchant: {
-    flex: 1,
-    fontFamily: typography.fontFamily,
-    fontSize: 18,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  transactionAmount: {
-    fontFamily: typography.fontFamily,
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  meta: {
     fontFamily: typography.fontFamily,
     fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  transactionMeta: {
+    marginTop: 4,
+    fontFamily: typography.fontFamily,
+    fontSize: 10,
     color: colors.subText,
-    marginBottom: 10,
   },
-  badgeRow: {
+  amount: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  rowActions: {
+    marginTop: 13,
+    paddingTop: 11,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
     flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 7,
   },
-  categoryBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: colors.butterPale,
-    color: colors.butterBrown,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    overflow: 'hidden',
-  },
-  correctedBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: colors.successBg,
-    color: colors.successText,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    overflow: 'hidden',
-  },
-  rawBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    color: colors.subText,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    overflow: 'hidden',
-  },
-  transactionActionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  transactionActionButton: {
-    height: 34,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    backgroundColor: 'rgba(255, 247, 214, 0.34)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+  secondaryButton: {
+    minHeight: 32,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    paddingHorizontal: 10,
   },
-  transactionActionText: {
+  secondaryButtonText: {
     fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: colors.text,
   },
-  deleteActionText: {
+  deleteButton: {
+    minHeight: 32,
+    borderRadius: 10,
+    backgroundColor: colors.dangerBg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+  },
+  deleteButtonText: {
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    fontWeight: '800',
     color: colors.dangerText,
   },
-  categoryCard: {
-    marginTop: 16,
-    backgroundColor: 'rgba(255,248,216,0.42)',
+  budgetCard: {
+    padding: 15,
   },
-  categoryTopRow: {
+  budgetTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 11,
   },
-  categoryIconBubble: {
-    width: 62,
-    height: 62,
-    borderRadius: 24,
-    backgroundColor: colors.butterStrong,
+  budgetCategory: {
+    fontFamily: typography.fontFamily,
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  budgetAmount: {
+    marginTop: 4,
+    fontFamily: typography.fontFamily,
+    fontSize: 10.5,
+    color: colors.subText,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  categoryTitleBox: {
-    flex: 1,
-  },
-  categoryTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 25,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  categoryDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.subText,
-  },
-  rateBadge: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
+  progressTrack: {
+    height: 8,
     borderRadius: 999,
-  },
-  rateBadgeText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  categoryMetricList: {
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(122,111,91,0.14)',
-    gap: 9,
-    marginBottom: 14,
-  },
-  categoryMetricItem: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  metricLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    color: colors.subText,
-  },
-  metricValue: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  progressInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 10,
-  },
-  progressLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.subText,
-  },
-  progressValue: {
-    flexShrink: 1,
-    textAlign: 'right',
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  categoryStatusText: {
-    marginTop: 12,
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-  },
-  budgetEditorCard: {
-    marginTop: 14,
-    backgroundColor: 'rgba(255,248,216,0.42)',
-  },
-  budgetEditorHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  budgetEditorTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 22,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: -0.5,
-  },
-  budgetEditorBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
     overflow: 'hidden',
-    backgroundColor: colors.butterPale,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
   },
-  budgetEditLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.subText,
-    marginBottom: 7,
-  },
-  budgetEditInput: {
-    minHeight: 52,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(255,255,255,0.28)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.38)',
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  budgetEditHint: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    color: colors.mutedText,
-    marginBottom: 14,
-  },
-  thresholdRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
-  },
-  thresholdInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  thresholdSuffix: {
-    fontFamily: typography.fontFamily,
-    fontSize: 16,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  budgetSwitchRow: {
-    minHeight: 68,
-    borderRadius: 21,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.26)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.34)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 16,
-  },
-  budgetSwitchTextBox: {
-    flex: 1,
-  },
-  budgetSwitchTitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  budgetSwitchDescription: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: colors.subText,
-  },
-  budgetSaveButton: {
-    height: 52,
-    borderRadius: 19,
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
     backgroundColor: colors.butterStrong,
+  },
+  progressFillDanger: {
+    backgroundColor: '#D66A61',
+  },
+  budgetBottom: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  budgetRatio: {
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    fontWeight: '900',
+    color: colors.butterDeep,
+  },
+  budgetRatioDanger: {
+    color: colors.dangerText,
+  },
+  budgetFlag: {
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    color: colors.subText,
+  },
+  loadingState: {
+    minHeight: 160,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  disabledBudgetSaveButton: {
-    opacity: 0.62,
+  emptyCard: {
+    minHeight: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  budgetSaveButtonText: {
+  emptyText: {
     fontFamily: typography.fontFamily,
-    fontSize: 15,
-    fontWeight: '900',
-    color: colors.text,
+    fontSize: 11,
+    color: colors.subText,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+    backgroundColor: 'rgba(17,24,39,0.22)',
+    alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
   modalCard: {
-    padding: 22,
-    borderRadius: 30,
-    backgroundColor: '#FFFBF0',
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '90%',
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 18,
   },
   modalHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
-    alignItems: 'flex-start',
-    marginBottom: 18,
+    gap: 12,
+    marginBottom: 16,
   },
   modalTitle: {
     fontFamily: typography.fontFamily,
-    fontSize: 23,
+    fontSize: 17,
     fontWeight: '900',
     color: colors.text,
-    marginBottom: 6,
   },
-  modalSubtitle: {
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.subText,
-  },
-  modalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 16,
-    backgroundColor: colors.butterPale,
+  modalClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  inputLabel: {
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '900',
-    color: colors.butterBrown,
-    marginBottom: 8,
-  },
-  input: {
-    height: 56,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-    paddingHorizontal: 16,
-    fontFamily: typography.fontFamily,
-    fontSize: 15,
-    color: colors.text,
+  switchRow: {
+    minHeight: 62,
     marginBottom: 14,
-  },
-  dateQuickButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: colors.butterPale,
-    marginTop: -2,
-    marginBottom: 10,
-  },
-  dateQuickButtonText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  categoryChipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  categoryChip: {
-    minHeight: 38,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  selectedCategoryChip: {
-    backgroundColor: colors.butterStrong,
-    borderColor: 'rgba(215,169,0,0.38)',
-  },
-  categoryChipText: {
+  switchTitle: {
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
-    color: colors.butterBrown,
-  },
-  selectedCategoryChipText: {
     color: colors.text,
   },
-  modalButton: {
-    marginTop: 4,
+  switchMeta: {
+    marginTop: 3,
+    maxWidth: 320,
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    color: colors.subText,
   },
-  modalSecondaryButton: {
-    marginTop: 8,
+  pressed: {
+    opacity: 0.68,
+  },
+  disabled: {
+    opacity: 0.55,
   },
 });

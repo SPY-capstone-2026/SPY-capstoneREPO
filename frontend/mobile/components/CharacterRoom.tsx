@@ -4,13 +4,11 @@ import {
   ImageBackground,
   ImageSourcePropType,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 
 import { WanderingMascot } from '@/components/mascot';
 import { colors } from '@/constants/colors';
-import { typography } from '@/constants/typography';
 import {
   getCharacterColor,
   getShopItemSourceByName,
@@ -204,11 +202,6 @@ export function CharacterRoom({
         />
       </View>
 
-      <View pointerEvents="none" style={styles.tipPill}>
-        <Text style={styles.tipText}>
-          바닥을 돌아다니는 Moni를 눌러보세요
-        </Text>
-      </View>
     </>
   );
 
@@ -311,23 +304,5 @@ const styles = StyleSheet.create({
   wanderArea: {
     width: '100%',
     height: '100%',
-  },
-  tipPill: {
-    position: 'absolute',
-    left: 10,
-    bottom: 8,
-    zIndex: 30,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,232,227,0.96)',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  tipText: {
-    fontFamily: typography.fontFamily,
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.subText,
   },
 });
