@@ -32,7 +32,6 @@ import {
   SHOP_CATEGORY_ORDER,
   getShopCategoryLabel,
   getShopItemEffect,
-  isVisibleShopItemName,
 } from '@/services/shopCatalog';
 import {
   getInventoryFromApi,
@@ -60,12 +59,7 @@ export default function ShopScreen() {
   );
 
   const purchasableItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          item.is_purchasable &&
-          isVisibleShopItemName(item.name)
-      ),
+    () => items.filter((item) => item.is_purchasable),
     [items]
   );
 
@@ -80,12 +74,7 @@ export default function ShopScreen() {
   );
 
   const milestoneItems = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          !item.is_purchasable &&
-          isVisibleShopItemName(item.name)
-      ),
+    () => items.filter((item) => !item.is_purchasable),
     [items]
   );
 
@@ -757,7 +746,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
@@ -781,8 +770,8 @@ const styles = StyleSheet.create({
   pointsBadge: {
     minWidth: 78,
     borderRadius: 15,
-    backgroundColor: colors.butterPale,
-    borderWidth: 1,
+    backgroundColor: colors.popYellow,
+    borderWidth: 2,
     borderColor: colors.butterSoft,
     paddingHorizontal: 10,
     paddingVertical: 7,
@@ -805,7 +794,7 @@ const styles = StyleSheet.create({
   summaryRow: {
     minHeight: 58,
     borderRadius: 17,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     flexDirection: 'row',
@@ -907,7 +896,7 @@ const styles = StyleSheet.create({
   categoryChip: {
     height: 36,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 13,
@@ -915,7 +904,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   categoryChipSelected: {
-    backgroundColor: colors.butterPale,
+    backgroundColor: colors.popYellow,
     borderColor: colors.butterSoft,
   },
   categoryText: {
@@ -955,7 +944,7 @@ const styles = StyleSheet.create({
   compactCard: {
     width: 132,
     borderRadius: 17,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 9,
@@ -1002,7 +991,7 @@ const styles = StyleSheet.create({
     minWidth: 155,
     maxWidth: 280,
     borderRadius: 19,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 11,
@@ -1039,7 +1028,7 @@ const styles = StyleSheet.create({
     top: 7,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     paddingHorizontal: 7,
     paddingVertical: 4,
@@ -1057,7 +1046,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginTop: 9,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: 7,
     paddingVertical: 3,
   },
@@ -1121,7 +1110,7 @@ const styles = StyleSheet.create({
   milestoneCard: {
     width: 145,
     borderRadius: 17,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 9,
@@ -1157,7 +1146,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: 25,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     padding: 18,
     position: 'relative',
@@ -1201,7 +1190,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderRadius: 15,
     backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.borderSoft,
     padding: 12,
   },

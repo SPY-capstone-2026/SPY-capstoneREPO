@@ -29,7 +29,7 @@ export function AppScreenHeader({
         <View style={styles.copy}>
           {label || Icon ? (
             <View style={styles.labelRow}>
-              {Icon ? <Icon size={15} color={colors.butterDeep} strokeWidth={2.5} /> : null}
+              {Icon ? <Icon size={14} color={colors.backgroundWhite} strokeWidth={2.6} /> : null}
               {label ? <Text style={styles.label}>{label}</Text> : null}
             </View>
           ) : null}
@@ -58,7 +58,7 @@ export function AppScreenHeader({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 22,
+    marginBottom: 20,
   },
   topRow: {
     flexDirection: 'row',
@@ -69,24 +69,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   labelRow: {
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    borderRadius: 999,
+    backgroundColor: colors.ink,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 7,
+    paddingHorizontal: 10,
+    marginBottom: 10,
   },
   label: {
     fontFamily: typography.fontFamily,
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.butterDeep,
-    letterSpacing: 0.7,
+    fontSize: 10,
+    fontWeight: '900',
+    color: colors.backgroundWhite,
+    letterSpacing: 0.9,
   },
   title: {
     fontFamily: typography.fontFamily,
-    fontSize: 27,
+    fontSize: 30,
     lineHeight: 34,
     fontWeight: '900',
-    letterSpacing: -0.8,
+    letterSpacing: -1.25,
     color: colors.text,
   },
   description: {
@@ -100,9 +105,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.popYellow,
     alignItems: 'center',
     justifyContent: 'center',
   },

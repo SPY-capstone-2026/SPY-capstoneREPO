@@ -14,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -381,15 +380,24 @@ function SettingSwitch({
         <Text style={styles.settingDescription}>{description}</Text>
       </View>
 
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        thumbColor={value ? colors.butterStrong : '#F4F4F4'}
-        trackColor={{
-          true: colors.butterSoft,
-          false: colors.gray200,
-        }}
-      />
+      <Pressable
+        accessibilityRole="switch"
+        accessibilityState={{ checked: value }}
+        accessibilityLabel={title}
+        onPress={() => onChange(!value)}
+        style={({ pressed }) => [
+          styles.themeSwitch,
+          value && styles.themeSwitchOn,
+          pressed && styles.themeSwitchPressed,
+        ]}
+      >
+        <View
+          style={[
+            styles.themeSwitchThumb,
+            value && styles.themeSwitchThumbOn,
+          ]}
+        />
+      </Pressable>
     </View>
   );
 }
@@ -538,10 +546,10 @@ const styles = StyleSheet.create({
     paddingBottom: 112,
   },
   profileCard: {
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 24,
+    borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.popBlue,
     padding: 15,
     marginBottom: 10,
   },
@@ -554,7 +562,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: colors.butterPale,
+    backgroundColor: colors.popYellow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -584,7 +592,7 @@ const styles = StyleSheet.create({
   },
   growthCard: {
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 16,
@@ -668,10 +676,10 @@ const styles = StyleSheet.create({
   },
   navigationCard: {
     minHeight: 88,
-    borderRadius: 19,
-    borderWidth: 1,
+    borderRadius: 22,
+    borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.popMint,
     padding: 13,
     flexDirection: 'row',
     alignItems: 'center',
@@ -720,7 +728,7 @@ const styles = StyleSheet.create({
   },
   settingsCard: {
     borderRadius: 19,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     overflow: 'hidden',
@@ -754,6 +762,37 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '900',
     color: colors.text,
+  },
+  themeSwitch: {
+    width: 46,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: colors.gray300,
+    backgroundColor: colors.gray200,
+    padding: 3,
+    justifyContent: 'center',
+  },
+  themeSwitchOn: {
+    borderColor: colors.butterDeep,
+    backgroundColor: colors.butterSoft,
+  },
+  themeSwitchPressed: {
+    opacity: 0.78,
+  },
+  themeSwitchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.gray300,
+    transform: [{ translateX: 0 }],
+  },
+  themeSwitchThumbOn: {
+    backgroundColor: colors.butterStrong,
+    borderColor: colors.butterDeep,
+    transform: [{ translateX: 18 }],
   },
   settingDescription: {
     marginTop: 2,
@@ -851,7 +890,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     maxHeight: '92%',
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 20,
@@ -881,7 +920,7 @@ const styles = StyleSheet.create({
   editInput: {
     minHeight: 48,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surfaceSoft,
     paddingHorizontal: 12,
@@ -897,7 +936,7 @@ const styles = StyleSheet.create({
   optionButton: {
     minHeight: 40,
     borderRadius: 13,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surfaceSoft,
     paddingHorizontal: 12,

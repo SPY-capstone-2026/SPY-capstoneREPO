@@ -212,7 +212,7 @@ export default function HomeScreen() {
             <View style={styles.reportIcon}>
               <BarChart3
                 size={21}
-                color={colors.butterDeep}
+                color={colors.backgroundWhite}
                 strokeWidth={2.5}
               />
             </View>
@@ -362,6 +362,7 @@ export default function HomeScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.smallAction,
+              styles.shopAction,
               pressed && styles.pressed,
             ]}
             onPress={() => router.push('/shop')}
@@ -377,6 +378,7 @@ export default function HomeScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.smallAction,
+              styles.inventoryAction,
               pressed && styles.pressed,
             ]}
             onPress={() => router.push('/inventory')}
@@ -392,6 +394,7 @@ export default function HomeScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.smallAction,
+              styles.spendAction,
               pressed && styles.pressed,
             ]}
             onPress={() => router.push('/(tabs)/transactions')}
@@ -424,11 +427,11 @@ const styles = StyleSheet.create({
     paddingBottom: 112,
   },
   gameStatusBar: {
-    minHeight: 52,
-    borderRadius: 16,
-    borderWidth: 1,
+    minHeight: 54,
+    borderRadius: 18,
+    borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.ink,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -458,21 +461,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontSize: 11,
     fontWeight: '900',
-    color: colors.text,
+    color: colors.backgroundWhite,
   },
   gameStatusHint: {
     marginTop: 1,
     fontFamily: typography.fontFamily,
     fontSize: 7.5,
     fontWeight: '700',
-    color: colors.mutedText,
+    color: '#B8B3BF',
   },
   gameStatusProgressTrack: {
     height: 3,
     marginTop: 4,
     borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: '#3A3644',
   },
   gameStatusProgressFill: {
     height: '100%',
@@ -483,7 +486,7 @@ const styles = StyleSheet.create({
     width: 1,
     height: 26,
     marginHorizontal: 10,
-    backgroundColor: colors.borderSoft,
+    backgroundColor: '#3A3644',
   },
   gameStatusItemCompact: {
     flexDirection: 'row',
@@ -495,7 +498,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontSize: 11,
     fontWeight: '900',
-    color: colors.text,
+    color: colors.backgroundWhite,
   },
   roomWrap: {
     position: 'relative',
@@ -507,10 +510,10 @@ const styles = StyleSheet.create({
     right: 14,
     top: 14,
     zIndex: 32,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(225, 221, 210, 0.96)',
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.popPink,
     paddingHorizontal: 15,
     paddingVertical: 13,
     shadowColor: colors.shadow,
@@ -529,10 +532,10 @@ const styles = StyleSheet.create({
     bottom: -7,
     width: 14,
     height: 14,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(225, 221, 210, 0.96)',
+    backgroundColor: colors.popPink,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: colors.border,
     transform: [{ rotate: '45deg' }],
   },
   speechTailWarning: {
@@ -597,15 +600,24 @@ const styles = StyleSheet.create({
   },
   smallAction: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 15,
-    borderWidth: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
     paddingHorizontal: 8,
+  },
+  shopAction: {
+    backgroundColor: colors.popPink,
+  },
+  inventoryAction: {
+    backgroundColor: colors.popBlue,
+  },
+  spendAction: {
+    backgroundColor: colors.popYellow,
   },
   smallActionText: {
     fontFamily: typography.fontFamily,
@@ -616,6 +628,7 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     padding: 20,
+    backgroundColor: colors.popLime,
   },
   heroTop: {
     flexDirection: 'row',
@@ -641,7 +654,7 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 15,
-    backgroundColor: colors.butterPale,
+    backgroundColor: colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -670,16 +683,16 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   textAction: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: colors.ink,
   },
   textActionText: {
     fontFamily: typography.fontFamily,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
-    color: colors.text,
+    color: colors.backgroundWhite,
   },
   pressed: {
     opacity: 0.68,

@@ -25,6 +25,7 @@ import {
   View,
 } from 'react-native';
 
+import { AppLoadingState } from '@/components/AppLoadingState';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
@@ -592,12 +593,11 @@ export default function TransactionsScreen() {
         </View>
 
         {isLoading ? (
-          <View style={styles.loadingState}>
-            <ActivityIndicator
-              size="small"
-              color={colors.butterDeep}
-            />
-          </View>
+          <AppLoadingState
+            compact
+            title="지출 정보를 불러오고 있어요"
+            description="최근 내역과 예산 상태를 정리하는 중이에요."
+          />
         ) : activeTab === 'recent' ? (
           <View style={styles.list}>
             {recentTransactions.length > 0 ? (
@@ -961,6 +961,7 @@ const styles = StyleSheet.create({
   },
   createCard: {
     padding: 18,
+    backgroundColor: colors.popMint,
   },
   cardTitleRow: {
     flexDirection: 'row',
@@ -1073,9 +1074,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   primaryButton: {
-    minHeight: 44,
-    borderRadius: 13,
-    backgroundColor: colors.butterStrong,
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: colors.ink,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1086,13 +1087,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontSize: 12,
     fontWeight: '900',
-    color: colors.text,
+    color: colors.backgroundWhite,
   },
   tabs: {
     flexDirection: 'row',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 4,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.ink,
     marginTop: 4,
     marginBottom: 14,
   },
@@ -1106,15 +1107,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tabActive: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderWidth: 0,
+    backgroundColor: colors.backgroundWhite,
   },
   tabText: {
     fontFamily: typography.fontFamily,
     fontSize: 11,
-    fontWeight: '800',
-    color: colors.mutedText,
+    fontWeight: '900',
+    color: '#AAA4B0',
   },
   tabTextActive: {
     color: colors.text,
@@ -1194,6 +1194,7 @@ const styles = StyleSheet.create({
   },
   budgetCard: {
     padding: 15,
+    backgroundColor: colors.popYellow,
   },
   budgetTop: {
     flexDirection: 'row',

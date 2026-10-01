@@ -38,26 +38,26 @@ export function GlassCard({
 const styles = StyleSheet.create({
   card: {
     width: '100%',
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 18,
     marginBottom: 14,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     shadowColor: colors.shadow,
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.035,
-    shadowRadius: 10,
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 0,
+    elevation: 2,
   },
   softCard: {
-    backgroundColor: colors.surfaceSoft,
+    backgroundColor: colors.popMint,
   },
   butterCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.butterSoft,
+    backgroundColor: colors.popYellow,
+    borderColor: colors.border,
   },
 });
