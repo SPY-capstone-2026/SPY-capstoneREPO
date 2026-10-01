@@ -17,7 +17,9 @@ from services.reports_service import (
     build_weekly_breakdown,
 )
 from services.report_cache_service import get_or_generate_report
-from services.challenge_stats_service import get_total_xp_earned
+from services.challenge_stats_service import get_total_xp_earned, get_category_stats
+from services.budget_service import get_budget_change_history
+from moni_engine.report import generate_weekly_comment, generate_monthly_comment
 
 router = APIRouter()
 
@@ -73,7 +75,7 @@ def get_weekly_report_api(
 
             xp_earned_this_week = get_total_xp_earned(session, user_id, week_start, week_end)
 
-            return {
+            payload = {
                 "week_start": week_start.isoformat(),
                 "week_end": week_end.isoformat(),
                 "weekly_summary": {
@@ -87,6 +89,19 @@ def get_weekly_report_api(
                 "daily_trend": daily_trend,
                 "category_comparison": category_comparison,
             }
+
+            # 총평 생성 — build_report() 안에서 붙여야 캐싱될 때 comment도 같이 저장됨
+            # (안 그러면 지난주 리포트를 열 때마다 LLM을 다시 호출하게 됨)
+            challenge_stats = {
+                "categories": get_category_stats(
+                    session, user_id, start_date=week_start, end_date=week_end
+                )
+            }
+            comment_result = generate_weekly_comment(payload, challenge_stats)
+            payload["comment"] = comment_result["comment"]
+            payload["comment_source"] = comment_result["comment_source"]
+
+            return payload
 
         # 요청한 주가 이미 끝났으면 캐시 우선 조회, 진행 중인 주(이번 주)면 항상 라이브 계산
         report_data = get_or_generate_report(
@@ -170,7 +185,7 @@ def get_monthly_report_api(
                 period_end=last_day,
             )
 
-            return {
+            payload = {
                 "month": first_day.strftime("%Y-%m"),
                 "is_current_month": is_current_month,
                 "monthly_summary": {
@@ -186,6 +201,22 @@ def get_monthly_report_api(
                 "evaluated_categories": evaluated_categories,
                 "category_overrun": category_overrun,
             }
+
+            # 총평 생성 — 월간 챌린지 통계는 기간을 반드시 명시해서 호출
+            # (안 그러면 get_category_stats가 전체 기간 누적을 돌려줘서 총평이 틀어짐)
+            challenge_stats = {
+                "categories": get_category_stats(
+                    session, user_id, start_date=first_day, end_date=last_day
+                )
+            }
+            budget_history = get_budget_change_history(
+                session, user_id, start_date=first_day, end_date=last_day
+            )
+            comment_result = generate_monthly_comment(payload, challenge_stats, budget_history)
+            payload["comment"] = comment_result["comment"]
+            payload["comment_source"] = comment_result["comment_source"]
+
+            return payload
 
         # 요청한 달이 이미 끝났으면 캐시 우선 조회, 진행 중인 달(이번 달)이면 항상 라이브 계산
         report_data = get_or_generate_report(
