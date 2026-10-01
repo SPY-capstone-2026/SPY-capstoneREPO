@@ -85,7 +85,10 @@ def make_tx(
 
 def generate_university_student_data(user_id=USER_ID, months_back=MONTHS_BACK, seed=42):
     np.random.seed(seed)
-    start_date, end_date = get_date_range(months_back)
+
+    if start_date is None or end_date is None:
+        start_date, end_date = get_date_range(months_back)
+
     exam_periods = get_exam_periods(start_date, end_date)
 
     days = (end_date - start_date).days + 1
