@@ -7,7 +7,6 @@ import {
   ClipboardCheck,
   Flame,
   Sparkles,
-  RotateCcw,
   Trophy,
   WalletCards,
 } from 'lucide-react-native';
@@ -21,6 +20,7 @@ import {
 } from 'react-native';
 
 import { AiMetadataPanel } from '@/components/AiMetadataPanel';
+import { AppLoadingState } from '@/components/AppLoadingState';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { WanderingMascot } from '@/components/mascot';
 import { colors } from '@/constants/colors';
@@ -181,11 +181,15 @@ export default function ChallengeScreen() {
         <AppScreenHeader
           label="CHALLENGE"
           title="데일리 챌린지"
-          description={
-            isLoading ? '챌린지를 불러오고 있어요.' : undefined
-          }
           Icon={ClipboardCheck}
         />
+
+        {isLoading && challenges.length === 0 ? (
+          <AppLoadingState
+            title="오늘의 챌린지를 준비하고 있어요"
+            description="소비 기록과 예산 흐름을 확인하는 중이에요."
+          />
+        ) : null}
 
         <View style={styles.mascotRow}>
           <View style={styles.mascotBox}>
@@ -321,7 +325,13 @@ export default function ChallengeScreen() {
             return (
               <View
                 key={challenge.challenge_id}
-                style={[styles.challengeCard, completed && styles.challengeCardCompleted]}
+                style={[
+                  styles.challengeCard,
+                  index % 3 === 0 && styles.challengeCardPink,
+                  index % 3 === 1 && styles.challengeCardYellow,
+                  index % 3 === 2 && styles.challengeCardMint,
+                  completed && styles.challengeCardCompleted,
+                ]}
               >
                 <View style={styles.challengeTop}>
                   <View style={[styles.challengeIcon, completed && styles.challengeIconCompleted]}>
@@ -358,7 +368,7 @@ export default function ChallengeScreen() {
                   <View style={styles.aiBox}>
                     <View style={styles.aiTitleRow}>
                       <Sparkles size={15} color={colors.butterDeep} strokeWidth={2.5} />
-                      <Text style={styles.aiTitle}>이 챌린지의 기준</Text>
+                      <Text style={styles.aiTitle}>챌린지 생성 이유</Text>
                     </View>
 
                     {metadata.context_label ? (
@@ -373,13 +383,13 @@ export default function ChallengeScreen() {
                       <View style={styles.aiMetricRow}>
                         {hasPredictedToday ? (
                           <View style={styles.aiMetric}>
-                            <Text style={styles.aiMetricLabel}>오늘 예상</Text>
+                            <Text style={styles.aiMetricLabel}>오늘 예상 지출</Text>
                             <Text style={styles.aiMetricValue}>{formatWon(metadata.predicted_today as number)}</Text>
                           </View>
                         ) : null}
                         {hasLimit ? (
                           <View style={styles.aiMetric}>
-                            <Text style={styles.aiMetricLabel}>권장 한도</Text>
+                            <Text style={styles.aiMetricLabel}>오늘 권장 한도</Text>
                             <Text style={styles.aiMetricValue}>{formatWon(metadata.daily_limit as number)}</Text>
                           </View>
                         ) : null}
@@ -393,27 +403,56 @@ export default function ChallengeScreen() {
                 <Pressable
                   disabled={failed || updating}
                   onPress={() => changeStatus(challenge)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{
+                    checked: completed,
+                    disabled: failed || updating,
+                  }}
                   style={({ pressed }) => [
-                    styles.actionButton,
-                    completed && styles.cancelButton,
-                    failed && styles.disabledButton,
+                    styles.checkRow,
+                    failed && styles.checkRowDisabled,
                     pressed && !failed && styles.pressed,
                   ]}
                 >
-                  {completed ? (
-                    <RotateCcw size={16} color={colors.subText} strokeWidth={2.4} />
-                  ) : (
-                    <Check size={17} color={colors.text} strokeWidth={2.8} />
-                  )}
-                  <Text style={[styles.actionButtonText, completed && styles.cancelButtonText]}>
-                    {updating
-                      ? '저장 중'
-                      : failed
-                        ? '종료된 챌린지'
-                        : completed
-                          ? '완료 취소'
-                          : '완료하기'}
-                  </Text>
+                  <View
+                    style={[
+                      styles.checkbox,
+                      completed && styles.checkboxChecked,
+                      failed && styles.checkboxDisabled,
+                    ]}
+                  >
+                    {completed ? (
+                      <Check
+                        size={16}
+                        color={colors.backgroundWhite}
+                        strokeWidth={3}
+                      />
+                    ) : null}
+                  </View>
+
+                  <View style={styles.checkCopy}>
+                    <Text
+                      style={[
+                        styles.checkLabel,
+                        completed && styles.checkLabelCompleted,
+                      ]}
+                    >
+                      {updating
+                        ? '저장 중'
+                        : failed
+                          ? '종료된 챌린지'
+                          : completed
+                            ? '완료됨'
+                            : '완료'}
+                    </Text>
+                    {!failed ? (
+                      <Text style={styles.checkHint}>
+                        {completed
+                          ? '체크를 해제하면 완료가 취소돼요.'
+                          : '실천했다면 체크해 주세요.'}
+                      </Text>
+                    ) : null}
+                  </View>
                 </Pressable>
               </View>
             );
@@ -490,13 +529,13 @@ const styles = StyleSheet.create({
   fixedMascotMotion: { width: '100%', height: '100%' },
   celebrateMascot: { width: 168, height: 118, alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
   speechBubble: {
-    flex: 1, minHeight: 112, borderRadius: 20, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surface, padding: 15, justifyContent: 'center', position: 'relative',
+    flex: 1, minHeight: 112, borderRadius: 22, borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.popMint, padding: 15, justifyContent: 'center', position: 'relative',
   },
   speechBubbleWarning: { backgroundColor: colors.warningBg, borderColor: '#F0D4A5' },
   speechTail: {
-    position: 'absolute', left: -7, top: 44, width: 14, height: 14,
-    backgroundColor: colors.surface, borderLeftWidth: 1, borderBottomWidth: 1,
+    position: 'absolute', left: -8, top: 44, width: 14, height: 14,
+    backgroundColor: colors.popMint, borderLeftWidth: 2, borderBottomWidth: 2,
     borderColor: colors.border, transform: [{ rotate: '45deg' }],
   },
   speechTailWarning: { backgroundColor: colors.warningBg, borderColor: '#F0D4A5' },
@@ -504,7 +543,7 @@ const styles = StyleSheet.create({
   speechLabel: { fontFamily: typography.fontFamily, fontSize: 10.5, fontWeight: '900', color: colors.butterDeep },
   speechLabelWarning: { color: colors.warningText },
   speechText: { fontFamily: typography.fontFamily, fontSize: 14.5, lineHeight: 20, fontWeight: '800', color: colors.text },
-  summaryCard: { padding: 18, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: 22 },
+  summaryCard: { padding: 18, borderRadius: 24, backgroundColor: colors.popBlue, borderWidth: 2, borderColor: colors.border, marginBottom: 22 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
   summaryLabel: { fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '800', color: colors.subText, marginBottom: 4 },
   summaryValue: { fontFamily: typography.fontFamily, fontSize: 20, fontWeight: '900', color: colors.text },
@@ -527,8 +566,11 @@ const styles = StyleSheet.create({
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: 19, fontWeight: '900', color: colors.text },
   sectionMeta: { fontFamily: typography.fontFamily, fontSize: 11.5, fontWeight: '800', color: colors.mutedText },
   list: { gap: 12 },
-  challengeCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 17 },
-  challengeCardCompleted: { backgroundColor: '#FCFFFD', borderColor: '#DCEFE3' },
+  challengeCard: { backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.border, borderRadius: 22, padding: 17 },
+  challengeCardPink: { backgroundColor: colors.popPink },
+  challengeCardYellow: { backgroundColor: colors.popYellow },
+  challengeCardMint: { backgroundColor: colors.popMint },
+  challengeCardCompleted: { backgroundColor: colors.successBg, borderColor: colors.border },
   challengeTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   challengeIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   challengeIconCompleted: { backgroundColor: colors.successBg },
@@ -555,11 +597,54 @@ const styles = StyleSheet.create({
   aiMetric: { flex: 1, paddingTop: 9, borderTopWidth: 1, borderTopColor: colors.borderSoft },
   aiMetricLabel: { fontFamily: typography.fontFamily, fontSize: 9.5, fontWeight: '700', color: colors.mutedText, marginBottom: 3 },
   aiMetricValue: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '900', color: colors.text },
-  actionButton: { height: 46, borderRadius: 14, backgroundColor: colors.butterStrong, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14 },
-  cancelButton: { backgroundColor: colors.surfaceMuted },
-  disabledButton: { backgroundColor: colors.surfaceMuted, opacity: 0.7 },
-  actionButtonText: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '900', color: colors.text },
-  cancelButtonText: { color: colors.subText },
+  checkRow: {
+    minHeight: 48,
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+    paddingTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  checkRowDisabled: {
+    opacity: 0.55,
+  },
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundWhite,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.butterDeep,
+  },
+  checkboxDisabled: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  checkCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  checkLabel: {
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  checkLabelCompleted: {
+    color: colors.butterBrown,
+  },
+  checkHint: {
+    marginTop: 2,
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    color: colors.mutedText,
+  },
   pressed: { opacity: 0.7 },
   emptyCard: { borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 22, marginBottom: 12 },
   emptyTitle: { fontFamily: typography.fontFamily, fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'center' },

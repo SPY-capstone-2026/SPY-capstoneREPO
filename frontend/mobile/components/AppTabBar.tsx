@@ -8,10 +8,16 @@ import {
   ReceiptText,
   UserRound,
 } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 
 type TabMeta = {
@@ -27,7 +33,6 @@ const TAB_META: Record<string, TabMeta> = {
   mypage: { label: '마이', Icon: UserRound },
 };
 
-// Character room is integrated into Home; keep only primary navigation tabs.
 const TAB_ORDER = [
   'home',
   'challenge',
@@ -36,18 +41,174 @@ const TAB_ORDER = [
   'mypage',
 ];
 
-export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
+const BAR_BACKGROUND = '#211B16';
+const ACTIVE_BACKGROUND = '#FFFDF8';
+const ACTIVE_FOREGROUND = '#211B16';
+const INACTIVE_FOREGROUND = '#8E8378';
 
-  const visibleRoutes = [...state.routes]
-    .filter((route) => TAB_META[route.name])
-    .sort((a, b) => TAB_ORDER.indexOf(a.name) - TAB_ORDER.indexOf(b.name));
+const BAR_HORIZONTAL_PADDING = 9;
+const INDICATOR_HEIGHT = 44;
+
+export function AppTabBar({
+  state,
+  descriptors,
+  navigation,
+}: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const [barWidth, setBarWidth] = useState(0);
+
+  const translateX = useRef(new Animated.Value(0)).current;
+  const scaleX = useRef(new Animated.Value(1)).current;
+  const scaleY = useRef(new Animated.Value(1)).current;
+
+  const visibleRoutes = useMemo(
+    () =>
+      [...state.routes]
+        .filter((route) => TAB_META[route.name])
+        .sort(
+          (a, b) =>
+            TAB_ORDER.indexOf(a.name) - TAB_ORDER.indexOf(b.name)
+        ),
+    [state.routes]
+  );
+
+  const activeVisibleIndex = useMemo(
+    () =>
+      visibleRoutes.findIndex((route) => {
+        const routeIndex = state.routes.findIndex(
+          (item) => item.key === route.key
+        );
+        return routeIndex === state.index;
+      }),
+    [state.index, state.routes, visibleRoutes]
+  );
+
+  const layout = useMemo(() => {
+    if (barWidth <= 0 || visibleRoutes.length === 0) {
+      return {
+        tabWidth: 0,
+        indicatorWidth: 0,
+      };
+    }
+
+    const innerWidth = barWidth - BAR_HORIZONTAL_PADDING * 2;
+    const tabWidth = innerWidth / visibleRoutes.length;
+    const indicatorWidth = Math.max(
+      58,
+      Math.min(88, tabWidth - 4)
+    );
+
+    return {
+      tabWidth,
+      indicatorWidth,
+    };
+  }, [barWidth, visibleRoutes.length]);
+
+  useEffect(() => {
+    if (
+      layout.tabWidth <= 0 ||
+      layout.indicatorWidth <= 0 ||
+      activeVisibleIndex < 0
+    ) {
+      return;
+    }
+
+    const targetX =
+      BAR_HORIZONTAL_PADDING +
+      activeVisibleIndex * layout.tabWidth +
+      (layout.tabWidth - layout.indicatorWidth) / 2;
+
+    Animated.parallel([
+      Animated.spring(translateX, {
+        toValue: targetX,
+        stiffness: 330,
+        damping: 24,
+        mass: 0.72,
+        overshootClamping: false,
+        restDisplacementThreshold: 0.2,
+        restSpeedThreshold: 0.2,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(scaleX, {
+            toValue: 1.12,
+            duration: 85,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleY, {
+            toValue: 0.92,
+            duration: 85,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.spring(scaleX, {
+            toValue: 1,
+            stiffness: 420,
+            damping: 18,
+            mass: 0.55,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleY, {
+            toValue: 1,
+            stiffness: 420,
+            damping: 18,
+            mass: 0.55,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    ]).start();
+  }, [
+    activeVisibleIndex,
+    layout.indicatorWidth,
+    layout.tabWidth,
+    scaleX,
+    scaleY,
+    translateX,
+  ]);
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 7) }]}>
-      <View style={styles.bar}>
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.wrapper,
+        {
+          paddingBottom: Math.max(insets.bottom, 10),
+        },
+      ]}
+    >
+      <View
+        style={styles.bar}
+        onLayout={(event) => {
+          const nextWidth = event.nativeEvent.layout.width;
+          if (nextWidth !== barWidth) {
+            setBarWidth(nextWidth);
+          }
+        }}
+      >
+        {layout.indicatorWidth > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.activeIndicator,
+              {
+                width: layout.indicatorWidth,
+                transform: [
+                  { translateX },
+                  { scaleX },
+                  { scaleY },
+                ],
+              },
+            ]}
+          />
+        ) : null}
+
         {visibleRoutes.map((route) => {
-          const routeIndex = state.routes.findIndex((item) => item.key === route.key);
+          const routeIndex = state.routes.findIndex(
+            (item) => item.key === route.key
+          );
           const isFocused = routeIndex === state.index;
           const meta = TAB_META[route.name];
           const Icon = meta.Icon;
@@ -66,6 +227,7 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
               } catch {
                 // Haptics can be unavailable on web.
               }
+
               navigation.navigate(route.name, route.params);
             }
           };
@@ -74,30 +236,44 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
             <Pressable
               key={route.key}
               accessibilityRole="button"
-              accessibilityState={isFocused ? { selected: true } : {}}
-              accessibilityLabel={descriptor.options.tabBarAccessibilityLabel}
+              accessibilityState={
+                isFocused ? { selected: true } : {}
+              }
+              accessibilityLabel={
+                descriptor.options.tabBarAccessibilityLabel
+              }
               testID={descriptor.options.tabBarButtonTestID}
               onPress={onPress}
-              style={styles.tab}
+              style={({ pressed }) => [
+                styles.tab,
+                pressed && styles.tabPressed,
+              ]}
             >
               <View
                 style={[
-                  styles.iconBox,
-                  isFocused && styles.iconBoxActive,
+                  styles.tabContent,
+                  isFocused && styles.tabContentFocused,
                 ]}
               >
                 <Icon
-                  size={19}
-                  strokeWidth={isFocused ? 2.8 : 2.25}
-                  color={isFocused ? colors.text : colors.mutedText}
+                  size={isFocused ? 17 : 21}
+                  strokeWidth={isFocused ? 2.7 : 2.25}
+                  color={
+                    isFocused
+                      ? ACTIVE_FOREGROUND
+                      : INACTIVE_FOREGROUND
+                  }
                 />
+
+                {isFocused ? (
+                  <Text
+                    numberOfLines={1}
+                    style={styles.activeLabel}
+                  >
+                    {meta.label}
+                  </Text>
+                ) : null}
               </View>
-              <Text
-                numberOfLines={1}
-                style={[styles.label, isFocused && styles.labelActive]}
-              >
-                {meta.label}
-              </Text>
             </Pressable>
           );
         })}
@@ -112,55 +288,75 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSoft,
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    backgroundColor: 'transparent',
   },
   bar: {
-    minHeight: 66,
+    position: 'relative',
+    width: '100%',
+    maxWidth: 560,
+    minHeight: 70,
+    borderRadius: 35,
+    backgroundColor: BAR_BACKGROUND,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingTop: 6,
+    paddingHorizontal: BAR_HORIZONTAL_PADDING,
+    paddingVertical: 9,
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    elevation: 9,
+    overflow: 'hidden',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    left: 0,
+    top: 13,
+    height: INDICATOR_HEIGHT,
+    borderRadius: INDICATOR_HEIGHT / 2,
+    backgroundColor: ACTIVE_BACKGROUND,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    elevation: 2,
   },
   tab: {
     flex: 1,
     minWidth: 0,
-    minHeight: 54,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    zIndex: 2,
   },
-  iconBox: {
-    width: 34,
-    height: 30,
-    borderRadius: 11,
+  tabPressed: {
+    opacity: 0.72,
+  },
+  tabContent: {
+    minWidth: 44,
+    height: 44,
+    borderRadius: 22,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
   },
-  iconBoxActive: {
-    backgroundColor: colors.butterPale,
+  tabContentFocused: {
+    minWidth: 58,
   },
-  characterIconBox: {
-    width: 38,
-    height: 34,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  characterIconBoxActive: {
-    borderColor: colors.butterSoft,
-    backgroundColor: colors.butterPale,
-  },
-  label: {
+  activeLabel: {
     fontFamily: typography.fontFamily,
-    fontSize: 9.5,
-    fontWeight: '700',
-    color: colors.mutedText,
-  },
-  labelActive: {
-    color: colors.text,
+    fontSize: 11.5,
     fontWeight: '900',
+    color: ACTIVE_FOREGROUND,
   },
 });

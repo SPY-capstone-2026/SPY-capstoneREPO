@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   AlertTriangle,
@@ -17,15 +17,19 @@ import {
   WalletCards,
 } from 'lucide-react-native';
 import {
-  ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   View,
+  ViewStyle,
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
+import { AppLoadingState } from '@/components/AppLoadingState';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
 import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
@@ -69,14 +73,14 @@ type VerticalBarDatum = {
 };
 
 const PIE_COLORS = [
-  '#F0B84A',
-  '#E7CF93',
-  '#DCA564',
-  '#C8B27A',
-  '#B88C56',
-  '#A9A18B',
-  '#D7B7A2',
-  '#BFA875',
+  '#F2C84B',
+  '#E8B84C',
+  '#F7D978',
+  '#D7A449',
+  '#F1D69B',
+  '#C98D38',
+  '#E7C77E',
+  '#8F6225',
 ];
 
 const EMPTY_CHALLENGE_STATS: ChallengeStatsData = {
@@ -243,6 +247,7 @@ function formatRate(value: number | null | undefined) {
 function formatCompletionRate(value: number | undefined) {
   if (value == null || !Number.isFinite(value)) return '0%';
   const percent = value <= 1 ? value * 100 : value;
+  if (!Number.isFinite(percent)) return '0%';
   return `${Math.round(percent)}%`;
 }
 
@@ -282,19 +287,93 @@ function budgetHistoryDate(item: BudgetHistoryItem) {
 }
 
 function categoryUsageRatio(category: BudgetUsageCategory) {
-  if (category.budget_limit <= 0) return 0;
-  return category.actual_spend / category.budget_limit;
+  if (
+    !Number.isFinite(category.budget_limit) ||
+    !Number.isFinite(category.actual_spend) ||
+    category.budget_limit <= 0
+  ) {
+    return 0;
+  }
+
+  return safeRatio(category.actual_spend / category.budget_limit);
+}
+
+function safeRatio(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(Math.max(value, 0), 1)
+    : 0;
 }
 
 function progressWidth(ratio: number) {
-  const value = Math.min(Math.max(ratio * 100, 0), 100);
+  const value = safeRatio(ratio) * 100;
   return `${value}%` as `${number}%`;
 }
 
 function barHeight(ratio: number) {
-  if (ratio <= 0) return '0%' as `${number}%`;
-  const value = Math.min(Math.max(ratio * 100, 7), 100);
+  const safe = safeRatio(ratio);
+  if (safe <= 0) return '0%' as `${number}%`;
+  const value = Math.min(Math.max(safe * 100, 7), 100);
   return `${value}%` as `${number}%`;
+}
+
+function AnimatedHorizontalFill({
+  ratio,
+  style,
+}: {
+  ratio: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  const target = safeRatio(ratio);
+
+  useEffect(() => {
+    progress.stopAnimation();
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 650,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, target]);
+
+  const width = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', `${Math.round(target * 100)}%`],
+  });
+
+  return <Animated.View style={[style, { width }]} />;
+}
+
+function AnimatedVerticalFill({
+  ratio,
+  style,
+}: {
+  ratio: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  const target = safeRatio(ratio);
+  const targetPercent =
+    target <= 0 ? 0 : Math.max(Math.round(target * 100), 7);
+
+  useEffect(() => {
+    progress.stopAnimation();
+    progress.setValue(0);
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, target]);
+
+  const height = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', `${targetPercent}%`],
+  });
+
+  return <Animated.View style={[style, { height }]} />;
 }
 
 function formatCompactWon(value: number) {
@@ -608,11 +687,12 @@ export default function ReportScreen() {
     monthlyReport?.monthly_summary.budget_limit ??
     0;
 
-  const weeklyMonthUsageRatio =
+  const weeklyMonthUsageRatio = safeRatio(
     weeklyBudgetSummary?.total_usage_ratio ??
-    (weeklyMonthBudget > 0
-      ? weeklyMonthSpent / weeklyMonthBudget
-      : 0);
+      (weeklyMonthBudget > 0
+        ? weeklyMonthSpent / weeklyMonthBudget
+        : 0)
+  );
 
   const monthlyBreakdown =
     monthlyReport?.weekly_breakdown ?? [];
@@ -689,7 +769,9 @@ export default function ReportScreen() {
 
   const challengeXp =
     mode === 'weekly'
-      ? weeklySummary?.xp_earned ?? challengeStats.xp_earned
+      ? challengeStats.xp_earned > 0
+        ? challengeStats.xp_earned
+        : weeklySummary?.xp_earned ?? 0
       : challengeStats.xp_earned;
 
   return (
@@ -790,15 +872,10 @@ export default function ReportScreen() {
         </View>
 
         {isLoading ? (
-          <GlassCard style={styles.stateCard}>
-            <ActivityIndicator
-              size="small"
-              color={colors.butterDeep}
-            />
-            <Text style={styles.stateTitle}>
-              리포트를 불러오고 있어요.
-            </Text>
-          </GlassCard>
+          <AppLoadingState
+            title="리포트를 정리하고 있어요"
+            description="소비 흐름과 예산 정보를 불러오는 중이에요."
+          />
         ) : errorMessage ? (
           <GlassCard style={styles.stateCard}>
             <AlertTriangle
@@ -896,7 +973,8 @@ export default function ReportScreen() {
                     </View>
 
                     <View style={styles.budgetTrack}>
-                      <View
+                      <AnimatedHorizontalFill
+                        ratio={weeklyMonthUsageRatio}
                         style={[
                           styles.budgetFill,
                           weeklyMonthUsageRatio > 1 &&
@@ -904,11 +982,6 @@ export default function ReportScreen() {
                           weeklyMonthUsageRatio >= 0.8 &&
                             weeklyMonthUsageRatio <= 1 &&
                             styles.budgetFillWarning,
-                          {
-                            width: progressWidth(
-                              weeklyMonthUsageRatio
-                            ),
-                          },
                         ]}
                       />
                     </View>
@@ -1309,13 +1382,9 @@ function WeeklyComparisonRow({
       <View style={styles.compareLine}>
         <Text style={styles.compareLabel}>이번 주</Text>
         <View style={styles.compareTrack}>
-          <View
-            style={[
-              styles.compareFillCurrent,
-              {
-                width: progressWidth(item.this_week / maxAmount),
-              },
-            ]}
+          <AnimatedHorizontalFill
+            ratio={item.this_week / maxAmount}
+            style={styles.compareFillCurrent}
           />
         </View>
         <Text style={styles.compareValue}>
@@ -1326,13 +1395,9 @@ function WeeklyComparisonRow({
       <View style={styles.compareLine}>
         <Text style={styles.compareLabel}>지난 주</Text>
         <View style={styles.compareTrack}>
-          <View
-            style={[
-              styles.compareFillPrevious,
-              {
-                width: progressWidth(item.last_week / maxAmount),
-              },
-            ]}
+          <AnimatedHorizontalFill
+            ratio={item.last_week / maxAmount}
+            style={styles.compareFillPrevious}
           />
         </View>
         <Text style={styles.compareValue}>
@@ -1359,7 +1424,10 @@ function VerticalBarChart({
   return (
     <View style={styles.verticalChart}>
       {data.map((item, index) => {
-        const ratio = item.value / maximum;
+        const ratio =
+          Number.isFinite(item.value) && maximum > 0
+            ? safeRatio(item.value / maximum)
+            : 0;
 
         return (
           <View
@@ -1374,13 +1442,9 @@ function VerticalBarChart({
             </Text>
 
             <View style={styles.verticalBarArea}>
-              <View
-                style={[
-                  styles.verticalBar,
-                  {
-                    height: barHeight(ratio),
-                  },
-                ]}
+              <AnimatedVerticalFill
+                ratio={ratio}
+                style={styles.verticalBar}
               />
             </View>
 
@@ -1471,8 +1535,12 @@ function BudgetPieChart({
       <View style={styles.pieLegend}>
         {visible.map((category, index) => {
           const ratio =
-            category.budget_limit > 0
-              ? category.actual_spend / category.budget_limit
+            category.budget_limit > 0 &&
+            Number.isFinite(category.actual_spend) &&
+            Number.isFinite(category.budget_limit)
+              ? safeRatio(
+                  category.actual_spend / category.budget_limit
+                )
               : 0;
 
           return (
@@ -1567,12 +1635,12 @@ function BudgetUsageRow({
       </View>
 
       <View style={styles.budgetTrack}>
-        <View
+        <AnimatedHorizontalFill
+          ratio={ratio}
           style={[
             styles.budgetFill,
             isOver && styles.budgetFillDanger,
             isNear && styles.budgetFillWarning,
-            { width: progressWidth(ratio) },
           ]}
         />
       </View>
@@ -1749,9 +1817,9 @@ const styles = StyleSheet.create({
   },
   modeTabs: {
     flexDirection: 'row',
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 4,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.ink,
     marginBottom: 12,
   },
   modeTab: {
@@ -1762,25 +1830,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modeTabActive: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.backgroundWhite,
+    borderWidth: 0,
   },
   modeTabText: {
     fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.subText,
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#AAA4B0',
   },
   modeTabTextActive: {
     color: colors.text,
   },
   periodNavigator: {
     minHeight: 52,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 18,
+    borderWidth: 2,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.popBlue,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 7,
@@ -2220,8 +2287,10 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   reviewHighlight: {
-    borderRadius: 14,
-    backgroundColor: colors.butterPale,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.popMint,
     paddingHorizontal: 13,
     paddingVertical: 11,
     marginBottom: 16,
@@ -2275,7 +2344,7 @@ const styles = StyleSheet.create({
   barFill: {
     height: '100%',
     borderRadius: 999,
-    backgroundColor: colors.butterStrong,
+    backgroundColor: colors.popBlue,
   },
   stack: {
     gap: 0,
@@ -2414,8 +2483,9 @@ const styles = StyleSheet.create({
   commentCard: {
     marginTop: 18,
     padding: 20,
-    borderWidth: 1.5,
-    borderColor: colors.butterSoft,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.popPink,
   },
   commentTop: {
     flexDirection: 'row',
