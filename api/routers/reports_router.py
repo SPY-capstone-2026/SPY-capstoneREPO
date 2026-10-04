@@ -75,6 +75,14 @@ def get_weekly_report_api(
 
             xp_earned_this_week = get_total_xp_earned(session, user_id, week_start, week_end)
 
+            # 챌린지 통계를 payload 구성 전에 먼저 계산 — 총평(LLM)용으로만 쓰지 않고
+            # weekly_summary에도 달성 개수를 노출해서 응답만 보고도 확인 가능하게 함
+            weekly_category_stats = get_category_stats(
+                session, user_id, start_date=week_start, end_date=week_end
+            )
+            challenges_total = sum(c["total_count"] for c in weekly_category_stats)
+            challenges_completed = sum(c["completed_count"] for c in weekly_category_stats)
+
             payload = {
                 "week_start": week_start.isoformat(),
                 "week_end": week_end.isoformat(),
@@ -85,6 +93,8 @@ def get_weekly_report_api(
                     "change_percent": change_percent,
                     "transaction_count": len(this_week_transactions),
                     "xp_earned": xp_earned_this_week,
+                    "challenges_total": challenges_total,
+                    "challenges_completed": challenges_completed,
                 },
                 "daily_trend": daily_trend,
                 "category_comparison": category_comparison,
@@ -92,11 +102,7 @@ def get_weekly_report_api(
 
             # 총평 생성 — build_report() 안에서 붙여야 캐싱될 때 comment도 같이 저장됨
             # (안 그러면 지난주 리포트를 열 때마다 LLM을 다시 호출하게 됨)
-            challenge_stats = {
-                "categories": get_category_stats(
-                    session, user_id, start_date=week_start, end_date=week_end
-                )
-            }
+            challenge_stats = {"categories": weekly_category_stats}
             comment_result = generate_weekly_comment(payload, challenge_stats)
             payload["comment"] = comment_result["comment"]
             payload["comment_source"] = comment_result["comment_source"]
@@ -185,6 +191,15 @@ def get_monthly_report_api(
                 period_end=last_day,
             )
 
+            # 총평 생성 — 월간 챌린지 통계는 기간을 반드시 명시해서 호출
+            # (안 그러면 get_category_stats가 전체 기간 누적을 돌려줘서 총평이 틀어짐)
+            # payload 구성 전에 먼저 계산해서 monthly_summary에도 달성 개수 노출
+            monthly_category_stats = get_category_stats(
+                session, user_id, start_date=first_day, end_date=last_day
+            )
+            challenges_total = sum(c["total_count"] for c in monthly_category_stats)
+            challenges_completed = sum(c["completed_count"] for c in monthly_category_stats)
+
             payload = {
                 "month": first_day.strftime("%Y-%m"),
                 "is_current_month": is_current_month,
@@ -195,6 +210,8 @@ def get_monthly_report_api(
                     "budget_pressure": budget_pressure,
                     "transaction_count": len(monthly_transactions),
                     "xp_earned": xp_earned_this_month,
+                    "challenges_total": challenges_total,
+                    "challenges_completed": challenges_completed,
                 },
                 "weekly_trend": weekly_trend,
                 "weekly_breakdown": weekly_breakdown,
@@ -202,13 +219,7 @@ def get_monthly_report_api(
                 "category_overrun": category_overrun,
             }
 
-            # 총평 생성 — 월간 챌린지 통계는 기간을 반드시 명시해서 호출
-            # (안 그러면 get_category_stats가 전체 기간 누적을 돌려줘서 총평이 틀어짐)
-            challenge_stats = {
-                "categories": get_category_stats(
-                    session, user_id, start_date=first_day, end_date=last_day
-                )
-            }
+            challenge_stats = {"categories": monthly_category_stats}
             budget_history = get_budget_change_history(
                 session, user_id, start_date=first_day, end_date=last_day
             )
