@@ -83,7 +83,7 @@ def make_tx(
     }
 
 
-def generate_university_student_data(user_id=USER_ID, months_back=MONTHS_BACK, seed=42):
+def generate_university_student_data(user_id=USER_ID, months_back=MONTHS_BACK, seed=42, start_date=None, end_date=None):
     np.random.seed(seed)
 
     if start_date is None or end_date is None:
