@@ -1677,6 +1677,7 @@ function ChallengePerformanceCard({
   const hasStats =
     stats.total_count > 0 ||
     stats.completed_count > 0 ||
+    (stats.completion_rate ?? 0) > 0 ||
     xpOverride > 0 ||
     stats.by_category.length > 0;
 
