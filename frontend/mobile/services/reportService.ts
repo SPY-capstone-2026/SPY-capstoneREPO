@@ -16,14 +16,28 @@ import type {
   WeeklyReportData,
 } from '@/types/report';
 
+function numberOrUndefined(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
 function numberOrZero(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return numberOrUndefined(value) ?? 0;
 }
 
 function firstNumber(...values: unknown[]) {
   for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
+    const parsed = numberOrUndefined(value);
+    if (parsed != null) {
+      return parsed;
     }
   }
   return undefined;
@@ -351,25 +365,104 @@ function normalizeMonthlyReport(
 function normalizeChallengeStats(
   response: ChallengeStatsApiResponse
 ): ChallengeStatsData {
-  let byCategory: ChallengeStatsCategory[] = [];
-  let summary: Partial<ChallengeStatsData> = {};
+  const responseRecord = response as Record<string, unknown>;
+  const rawData = response.data;
 
-  if (Array.isArray(response.data)) {
-    byCategory = response.data;
-  } else if (response.data && 'summary' in response.data) {
-    summary = response.data.summary ?? {};
-    byCategory = response.data.by_category ?? [];
-  } else if (response.data) {
-    summary = response.data;
-    byCategory = response.data.by_category ?? [];
-  } else {
-    summary = response;
-    byCategory = response.by_category ?? [];
-  }
+  const dataRecord =
+    rawData && !Array.isArray(rawData) && typeof rawData === 'object'
+      ? (rawData as Record<string, unknown>)
+      : null;
+
+  const nestedSummary =
+    dataRecord?.summary &&
+    typeof dataRecord.summary === 'object' &&
+    !Array.isArray(dataRecord.summary)
+      ? (dataRecord.summary as Record<string, unknown>)
+      : dataRecord?.stats &&
+          typeof dataRecord.stats === 'object' &&
+          !Array.isArray(dataRecord.stats)
+        ? (dataRecord.stats as Record<string, unknown>)
+        : dataRecord?.challenge_stats &&
+            typeof dataRecord.challenge_stats === 'object' &&
+            !Array.isArray(dataRecord.challenge_stats)
+          ? (dataRecord.challenge_stats as Record<string, unknown>)
+          : null;
+
+  const summary = nestedSummary ?? dataRecord ?? responseRecord;
+
+  const rawCategories = Array.isArray(rawData)
+    ? rawData
+    : Array.isArray(dataRecord?.by_category)
+      ? dataRecord.by_category
+      : Array.isArray(dataRecord?.categories)
+        ? dataRecord.categories
+        : Array.isArray(responseRecord.by_category)
+          ? responseRecord.by_category
+          : Array.isArray(responseRecord.categories)
+            ? responseRecord.categories
+            : [];
+
+  const byCategory: ChallengeStatsCategory[] = rawCategories.map(
+    (raw) => {
+      const item =
+        raw && typeof raw === 'object'
+          ? (raw as Record<string, unknown>)
+          : {};
+
+      const total =
+        firstNumber(
+          item.total_count,
+          item.total,
+          item.challenge_count,
+          item.total_challenges
+        ) ?? 0;
+
+      const completed =
+        firstNumber(
+          item.completed_count,
+          item.completed,
+          item.completed_challenges,
+          item.success_count
+        ) ?? 0;
+
+      const xp =
+        firstNumber(
+          item.xp_earned,
+          item.total_xp_earned,
+          item.earned_xp
+        ) ?? 0;
+
+      const calculatedRate =
+        total > 0 ? completed / total : undefined;
+
+      return {
+        category_name:
+          typeof item.category_name === 'string'
+            ? item.category_name
+            : typeof item.category === 'string'
+              ? item.category
+              : typeof item.name === 'string'
+                ? item.name
+                : '기타',
+        total_count: total,
+        total,
+        completed_count: completed,
+        completed,
+        // Counts are the canonical source when available.
+        completion_rate:
+          calculatedRate ??
+          firstNumber(
+            item.completion_rate,
+            item.completion_ratio,
+            item.rate
+          ),
+        xp_earned: xp,
+      };
+    }
+  );
 
   const totalFromCategories = byCategory.reduce(
-    (sum, item) =>
-      sum + numberOrZero(item.total_count ?? item.total),
+    (sum, item) => sum + numberOrZero(item.total_count ?? item.total),
     0
   );
   const completedFromCategories = byCategory.reduce(
@@ -382,33 +475,56 @@ function normalizeChallengeStats(
     0
   );
 
-  const totalCount = numberOrZero(
-    summary.total_count ?? response.total_count ?? totalFromCategories
-  );
-  const completedCount = numberOrZero(
-    summary.completed_count ??
-      response.completed_count ??
-      completedFromCategories
-  );
-  const summaryRecord = summary as Record<string, unknown>;
-  const responseRecord = response as Record<string, unknown>;
+  const totalCount =
+    firstNumber(
+      summary.total_count,
+      summary.total,
+      summary.challenge_count,
+      summary.total_challenges,
+      responseRecord.total_count,
+      responseRecord.total,
+      responseRecord.challenge_count,
+      responseRecord.total_challenges
+    ) ?? totalFromCategories;
 
-  const xpEarned = numberOrZero(
+  const completedCount =
+    firstNumber(
+      summary.completed_count,
+      summary.completed,
+      summary.completed_challenges,
+      summary.success_count,
+      responseRecord.completed_count,
+      responseRecord.completed,
+      responseRecord.completed_challenges,
+      responseRecord.success_count
+    ) ?? completedFromCategories;
+
+  const xpEarned =
     firstNumber(
       summary.xp_earned,
-      summaryRecord.total_xp_earned,
-      response.xp_earned,
+      summary.total_xp_earned,
+      summary.earned_xp,
+      responseRecord.xp_earned,
       responseRecord.total_xp_earned,
-      xpFromCategories
-    )
+      responseRecord.earned_xp
+    ) ?? xpFromCategories;
+
+  const apiCompletionRate = firstNumber(
+    summary.completion_rate,
+    summary.completion_ratio,
+    summary.rate,
+    responseRecord.completion_rate,
+    responseRecord.completion_ratio,
+    responseRecord.rate
   );
 
+  // If we know the actual counts, calculate the rate from them.
+  // This prevents a stale `completion_rate: 0` from displaying 0%
+  // while completed_count is non-zero.
   const completionRate =
     totalCount > 0
       ? Math.min(Math.max(completedCount / totalCount, 0), 1)
-      : summary.completion_rate ??
-        response.completion_rate ??
-        0;
+      : apiCompletionRate ?? 0;
 
   return {
     total_count: totalCount,
