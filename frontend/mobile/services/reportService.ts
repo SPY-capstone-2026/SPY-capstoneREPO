@@ -404,9 +404,11 @@ function normalizeChallengeStats(
   );
 
   const completionRate =
-    summary.completion_rate ??
-    response.completion_rate ??
-    (totalCount > 0 ? completedCount / totalCount : 0);
+    totalCount > 0
+      ? Math.min(Math.max(completedCount / totalCount, 0), 1)
+      : summary.completion_rate ??
+        response.completion_rate ??
+        0;
 
   return {
     total_count: totalCount,
