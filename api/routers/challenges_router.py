@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Depends
@@ -10,11 +10,16 @@ from schemas import ChallengeStatusUpdateRequest
 from serializers import serialize_challenge, serialize_user_progress
 from services.common_service import ensure_default_category_settings
 from services.challenge_service import make_fallback_challenge
-from services.leveling import (
-    process_challenge_completion,
-    calculate_level_from_xp,
-    reverse_challenge_completion,
+from services.time_utils import kst_today
+from services.challenge_verification_service import (
+    STATUS_PENDING,
+    STATUS_VERIFYING,
+    STATUS_SUCCESS,
+    STATUS_FAILED,
+    verify_pending_challenges_safely,
 )
+# 보상 지급(process_challenge_completion)/회수(reverse_challenge_completion)는 더 이상 이 라우터에서
+# 호출하지 않는다. 보상은 자정 정산(challenge_verification_service)에서만 지급된다.
 from services.challenge_stats_service import (
     get_weekly_completed_count,
     get_current_streak,
@@ -80,13 +85,17 @@ def get_challenge_stats_by_category_api(
 
 @router.get("/challenges/today")
 def get_today_challenges_api(user_id: str = Depends(get_current_user_id)):
+    # 스케줄러가 자정에 못 돌았더라도, 사용자가 앱을 열면 이 사용자의 밀린 정산을 먼저 처리한다.
+    # (정산 대상이 없으면 가벼운 조회 한 번으로 끝나고, 실패해도 이 API는 깨지지 않는다)
+    verify_pending_challenges_safely(user_id)
+
     with Session(engine) as session:
         user = session.get(User, user_id)
 
         if not user:
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
-        today = date.today()
+        today = kst_today()
 
         challenges = session.exec(
             select(DailyChallenge)
@@ -103,13 +112,17 @@ def get_today_challenges_api(user_id: str = Depends(get_current_user_id)):
 
 @router.post("/challenges/generate")
 def generate_challenges(user_id: str = Depends(get_current_user_id)):
+    verify_pending_challenges_safely(user_id)
+
     with Session(engine) as session:
         user = session.get(User, user_id)
 
         if not user:
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
-        today = date.today()
+        # 챌린지의 '대상 날짜'가 된다. 자정 검증이 이 날짜의 지출을 보므로 반드시 KST 기준.
+        # (UTC 서버에서 date.today()를 쓰면 KST 00~09시에 어제 날짜로 챌린지가 만들어진다)
+        today = kst_today()
 
         existing_challenges = session.exec(
             select(DailyChallenge)
@@ -179,13 +192,27 @@ def update_challenge_status_api(
     req: ChallengeStatusUpdateRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    allowed_statuses = ["PENDING", "SUCCESS", "FAILED"]
+    # 기존 FE 호환: 완료 체크는 지금까지처럼 {"status": "SUCCESS"}, 취소는 {"status": "PENDING"}.
+    # 단, SUCCESS 요청이 더 이상 '달성 확정'이 아니라 '검증 대기(VERIFYING)로 전환'을 뜻한다.
+    allowed_statuses = [STATUS_PENDING, STATUS_VERIFYING, STATUS_SUCCESS, STATUS_FAILED]
 
     if req.status not in allowed_statuses:
         raise HTTPException(status_code=400, detail="올바르지 않은 상태입니다")
 
+    # 사용자가 보낸 값 -> 실제로 저장할 상태
+    if req.status in (STATUS_SUCCESS, STATUS_VERIFYING):
+        requested = STATUS_VERIFYING  # 완료 체크
+    else:
+        requested = req.status        # PENDING(체크 취소) / FAILED(포기)
+
     with Session(engine) as session:
-        challenge = session.get(DailyChallenge, challenge_id)
+        # 행 잠금: 같은 챌린지에 대한 사용자 요청과 자정 정산이 서로 엇갈리지 않게 한다.
+        # (정산이 먼저 잡았으면 여기서 기다렸다가 '이미 확정됨'을 보게 된다)
+        challenge = session.exec(
+            select(DailyChallenge)
+            .where(DailyChallenge.challenge_id == challenge_id)
+            .with_for_update()
+        ).first()
 
         if not challenge:
             raise HTTPException(status_code=404, detail="챌린지를 찾을 수 없습니다")
@@ -198,44 +225,44 @@ def update_challenge_status_api(
         if not user:
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
-        previous_status = challenge.status
-        challenge.status = req.status
-        session.add(challenge)
+        current = challenge.status
+        already_final = current in (STATUS_SUCCESS, STATUS_FAILED)
 
-        level_result = None
-        reversal_result = None
+        if already_final:
+            # 이미 정산이 끝난 챌린지. 같은 의미의 재요청은 그대로 성공 처리(멱등)하고,
+            # 결과를 바꾸는 요청(체크 취소 등)은 막는다.
+            repeats_result = (
+                (current == STATUS_SUCCESS and requested == STATUS_VERIFYING)
+                or current == requested
+            )
+            if not repeats_result:
+                raise HTTPException(
+                    status_code=409,
+                    detail="이미 검증이 끝난 챌린지는 변경할 수 없습니다",
+                )
+        elif current != requested:
+            # 상태를 실제로 바꾸는 요청은 '당일(KST)' 챌린지에만 허용.
+            # 자정이 지나면 서버가 정산을 아직 못 돌았어도 체크/취소를 더 이상 받지 않는다.
+            if challenge.challenge_date != kst_today():
+                raise HTTPException(
+                    status_code=400,
+                    detail="당일 챌린지만 완료 체크/취소할 수 있습니다",
+                )
 
-        if previous_status != "SUCCESS" and req.status == "SUCCESS":
-            # 챌린지 달성 → XP 적립 + 레벨업/포인트 판정
-            level_result = process_challenge_completion(session, user, challenge.xp_reward)
-            # 완료 시점의 지급 내역을 챌린지에 스냅샷으로 저장 (취소 시 정확히 회수하기 위함)
-            challenge.reward_snapshot = level_result
-            challenge.completed_at = datetime.now()  # 스트릭/주간 통계용 완료 시각 기록
+            challenge.status = requested
             session.add(challenge)
             session.commit()
-            session.refresh(challenge)
-
-        elif previous_status == "SUCCESS" and req.status != "SUCCESS":
-            # 챌린지 완료 취소 → 스냅샷 기준으로 XP + 포인트 + 마일스톤 아이템 전부 회수
-            reversal_result = reverse_challenge_completion(session, user, challenge)
-            challenge.reward_snapshot = None  # 회수 완료했으니 스냅샷 제거
-            challenge.completed_at = None  # 완료 취소했으니 완료 시각도 초기화
-            session.add(challenge)
-            session.commit()
-            session.refresh(challenge)
-
-        else:
-            # 동일 상태로의 반복 요청 등 -> 중복 지급/회수 없이 상태만 저장
-            session.commit()
+        # current == requested (VERIFYING 재요청, PENDING 재요청)는 아무것도 하지 않는다.
 
         session.refresh(challenge)
 
+        # 응답 키는 기존과 동일하게 유지한다. 보상은 자정 정산에서 지급되므로 이 시점엔 항상 null.
         return {
             "status": "success",
             "data": {
                 "challenge": serialize_challenge(challenge),
                 "user_progress": serialize_user_progress(user),
-                "level_result": level_result,
-                "reversal_result": reversal_result,
+                "level_result": None,
+                "reversal_result": None,
             },
         }

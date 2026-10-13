@@ -82,6 +82,7 @@ class DailyChallenge(SQLModel, table=True):
     )
 
     completed_at: Optional[datetime] = Field(default=None)
+    verification_result: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 # ----------------------------------------
