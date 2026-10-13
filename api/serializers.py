@@ -38,6 +38,7 @@ def serialize_challenge(challenge: DailyChallenge):
         "ai_metadata": challenge.ai_metadata,
         "reward_snapshot": challenge.reward_snapshot,
         "completed_at": challenge.completed_at.isoformat() if challenge.completed_at else None,
+        "verification_result": challenge.verification_result,
     }
 
 

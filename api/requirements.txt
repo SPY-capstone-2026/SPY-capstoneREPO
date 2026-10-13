@@ -29,3 +29,4 @@ typing_extensions==4.15.0
 uvicorn==0.47.0
 openai>=1.0
 tensorflow-cpu>=2.16,<2.20
+tzdata
