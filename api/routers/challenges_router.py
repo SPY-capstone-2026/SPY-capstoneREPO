@@ -20,6 +20,12 @@ from services.challenge_verification_service import (
 )
 # 보상 지급(process_challenge_completion)/회수(reverse_challenge_completion)는 더 이상 이 라우터에서
 # 호출하지 않는다. 보상은 자정 정산(challenge_verification_service)에서만 지급된다.
+from services.challenge_history_service import (
+    get_challenge_history,
+    parse_result_filter,
+    resolve_range,
+    summarize_day,
+)
 from services.challenge_stats_service import (
     get_weekly_completed_count,
     get_current_streak,
@@ -107,6 +113,46 @@ def get_today_challenges_api(user_id: str = Depends(get_current_user_id)):
             "status": "success",
             "count": len(challenges),
             "data": [serialize_challenge(challenge) for challenge in challenges],
+        }
+
+
+# [챌린지 기록] 지난 챌린지를 날짜별로 조회 (기본: 어제까지 최근 30일)
+# result 필터: SUCCESS, FAILED, VERIFYING, MISSED, PENDING (쉼표로 여러 개)
+@router.get("/challenges/history")
+def get_challenge_history_api(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    result: Optional[str] = None,
+    category_name: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+):
+    # 정산이 밀려 있으면 먼저 처리해서 '정산 대기'가 오래 남아 보이지 않게 한다
+    verify_pending_challenges_safely(user_id)
+
+    today = kst_today()
+    start, end = resolve_range(start_date, end_date, today)
+    results = parse_result_filter(result)
+
+    with Session(engine) as session:
+        days = get_challenge_history(
+            session, user_id, start, end, today,
+            results=results, category_name=category_name,
+        )
+        return {
+            "status": "success",
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "count": sum(len(d["challenges"]) for d in days),
+            "data": [
+                {
+                    "date": d["date"].isoformat(),
+                    "summary": summarize_day(d["challenges"]),
+                    "challenges": [
+                        {**serialize_challenge(c), "result": r} for c, r in d["challenges"]
+                    ],
+                }
+                for d in days
+            ],
         }
 
 
