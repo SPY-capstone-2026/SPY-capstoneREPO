@@ -8,6 +8,7 @@ class UserUpdateRequest(BaseModel):
     income_type: Optional[str] = None
     payday: Optional[int] = None
     spend_profile: Optional[str] = None
+    nickname: Optional[str] = None
 
 
 class ChallengeStatusUpdateRequest(BaseModel):
@@ -55,3 +56,7 @@ class TransactionUpdateRequest(BaseModel):
 
 class InventoryEquipRequest(BaseModel):
     equip: bool
+
+
+class FriendRequestCreateRequest(BaseModel):
+    nickname: str

@@ -6,6 +6,7 @@ from models import (
     ShopItem,
     UserInventory,
     BudgetChangeLog,
+    Friendship,
 )
 
 
@@ -22,6 +23,7 @@ def serialize_user_profile(user: User):
     return {
         "user_id": user.user_id,
         "email": user.email,
+        "nickname": user.nickname,
         "income_type": user.income_type,
         "payday": user.payday,
         "spend_profile": user.spend_profile,
@@ -119,4 +121,42 @@ def serialize_budget_change(log: BudgetChangeLog):
         "new_limit": log.new_limit,
         "direction": "증액" if log.new_limit > log.old_limit else "감액",
         "changed_at": log.changed_at.isoformat() if log.changed_at else None,
+    }
+
+
+# ----------------------------------------
+# 소셜 (다른 사람에게 보이는 정보)
+# ⚠ 금융/개인 정보(email, income_type, payday, spend_profile, current_points,
+#   거래·예산·챌린지 내용)는 절대 넣지 않는다. 필드를 추가할 땐 이 원칙부터 확인.
+# ----------------------------------------
+def serialize_public_item(item: ShopItem):
+    return {
+        "item_id": item.item_id,
+        "name": item.name,
+        "category": item.category,
+        "image_url": item.image_url,
+        "rarity": item.rarity,
+    }
+
+
+def serialize_public_user(user: User, equipped_items=None):
+    equipped_items = equipped_items or []
+    character = next((i for i in equipped_items if i.category == "CHARACTER"), None)
+    return {
+        "user_id": user.user_id,
+        "nickname": user.nickname,
+        "current_level": user.current_level,
+        "total_xp": user.total_xp,
+        "character": serialize_public_item(character) if character else None,
+        "equipped_items": [serialize_public_item(i) for i in equipped_items],
+    }
+
+
+def serialize_friend_request(friendship: Friendship, me_id: str, other_user: User, equipped_items=None):
+    return {
+        "request_id": friendship.id,
+        "direction": "SENT" if friendship.requester_id == me_id else "RECEIVED",
+        "status": friendship.status,
+        "created_at": friendship.created_at.isoformat() if friendship.created_at else None,
+        "user": serialize_public_user(other_user, equipped_items),
     }

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from models import engine, User
 from auth import get_current_user_id
 from schemas import UserUpdateRequest
 from serializers import serialize_user_profile
+from services.social_service import normalize_nickname, find_user_by_nickname
 
 router = APIRouter()
 
@@ -62,8 +64,24 @@ def update_me_api(
         if req.spend_profile is not None:
             user.spend_profile = req.spend_profile
 
+        if req.nickname is not None:
+            nickname = normalize_nickname(req.nickname)
+            existing_user = find_user_by_nickname(session, nickname)
+
+            if existing_user and existing_user.user_id != user_id:
+                raise HTTPException(
+                    status_code=409, detail="이미 사용 중인 닉네임입니다"
+                )
+
+            user.nickname = nickname
+
         session.add(user)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # 같은 닉네임을 동시에 설정한 경우 (DB 유니크 제약이 최종 방어선)
+            session.rollback()
+            raise HTTPException(status_code=409, detail="이미 사용 중인 닉네임입니다")
         session.refresh(user)
 
         return {

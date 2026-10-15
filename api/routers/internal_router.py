@@ -35,6 +35,10 @@ def run_challenge_verification(
         None,
         description="테스트/시연용. 이 날짜를 '오늘'로 보고 정산한다. 비우면 KST 오늘.",
     ),
+    user_id: Optional[str] = Query(
+        None,
+        description="수동 실행 시 이 유저의 챌린지만 정산한다. as_of 를 쓸 땐 반드시 같이 줄 것.",
+    ),
     x_cron_secret: Optional[str] = Header(None),
 ):
     """
@@ -44,7 +48,9 @@ def run_challenge_verification(
     _check_cron_secret(x_cron_secret)
 
     if as_of is not None:
-        logger.warning("챌린지 정산을 as_of=%s 로 수동 실행합니다", as_of)
+        logger.warning("챌린지 정산을 as_of=%s, user_id=%s 로 수동 실행합니다", as_of, user_id)
 
-    summary = verify_pending_challenges(today=as_of)
+    summary = verify_pending_challenges(today=as_of, user_id=user_id)
+    if user_id:
+        summary = {**summary, "user_id": user_id}
     return {"status": "success", "data": summary}

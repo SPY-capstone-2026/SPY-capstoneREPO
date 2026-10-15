@@ -19,6 +19,8 @@ class User(SQLModel, table=True):
     total_xp: int = Field(default=0)
     current_level: int = Field(default=1)
     current_points: int = Field(default=0)  # 👈 추가된 필드
+    # 소셜: 친구 검색·공개 프로필에 쓰는 표시 이름. 기존 유저는 NULL(설정 전엔 검색 안 됨)
+    nickname: Optional[str] = Field(default=None, unique=True, index=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -178,6 +180,24 @@ class BudgetChangeLog(SQLModel, table=True):
     old_limit: int
     new_limit: int
     changed_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+# ----------------------------------------
+# 친구 관계 (요청 1건 = 행 1개, 수락되면 status 만 ACCEPTED 로 바뀐다)
+# 거절/취소/친구 삭제는 행을 지운다.
+# pair_key = 두 user_id 를 정렬해 '|'로 이은 값. 방향과 무관하게 두 사람 사이에 행이 하나만
+# 존재하도록 DB가 보장한다 (A→B, B→A 동시 요청 경쟁도 여기서 막힘).
+# ----------------------------------------
+class Friendship(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("pair_key", name="uq_friendship_pair_key"),)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    requester_id: str = Field(foreign_key="user.user_id", index=True)
+    addressee_id: str = Field(foreign_key="user.user_id", index=True)
+    pair_key: str
+    status: str = Field(default="PENDING")  # PENDING | ACCEPTED
+    created_at: datetime = Field(default_factory=datetime.now)
+    responded_at: Optional[datetime] = None
 
 
 def create_db_and_tables():
