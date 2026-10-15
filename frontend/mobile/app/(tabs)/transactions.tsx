@@ -27,6 +27,7 @@ import {
 
 import { AppLoadingState } from '@/components/AppLoadingState';
 import { AppScreenHeader } from '@/components/AppScreenHeader';
+import { CsvImportCard } from '@/components/CsvImportCard';
 import { GlassCard } from '@/components/GlassCard';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
@@ -537,6 +538,11 @@ export default function TransactionsScreen() {
             )}
           </Pressable>
         </GlassCard>
+
+        <CsvImportCard
+          categories={categories.map((category) => category.category_name)}
+          onImported={loadPage}
+        />
 
         <View style={styles.tabs}>
           <Pressable
