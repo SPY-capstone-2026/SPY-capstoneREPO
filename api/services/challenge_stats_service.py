@@ -3,6 +3,7 @@ from typing import Optional
 from collections import defaultdict
 from sqlmodel import Session, select
 from models import DailyChallenge
+from services.challenge_verification_service import STATUS_SUCCESS
 from services.time_utils import kst_today
 
 
@@ -17,7 +18,7 @@ def get_completed_challenges(
     query = (
         select(DailyChallenge)
         .where(DailyChallenge.user_id == user_id)
-        .where(DailyChallenge.status == "SUCCESS")
+        .where(DailyChallenge.status == STATUS_SUCCESS)
         .where(DailyChallenge.challenge_date >= start_date)
         .where(DailyChallenge.challenge_date <= end_date)
     )
@@ -109,7 +110,7 @@ def get_category_stats(
 
     for challenge in challenges:
         counts[challenge.category_name]["total_count"] += 1
-        if challenge.status == "SUCCESS":
+        if challenge.status == STATUS_SUCCESS:
             counts[challenge.category_name]["completed_count"] += 1
             counts[challenge.category_name]["xp_earned"] += challenge.xp_reward
 
@@ -139,7 +140,7 @@ def get_total_xp_earned(
     query = (
         select(DailyChallenge.xp_reward)
         .where(DailyChallenge.user_id == user_id)
-        .where(DailyChallenge.status == "SUCCESS")
+        .where(DailyChallenge.status == STATUS_SUCCESS)
     )
 
     if start_date:

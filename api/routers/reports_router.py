@@ -10,6 +10,7 @@ from services.reports_service import (
     get_month_date_range,
     get_week_date_range,
     get_weekly_trend,
+    calculate_change,
     calculate_projected_amount,
     build_evaluated_categories,
     build_weekly_category_comparison,
@@ -59,12 +60,9 @@ def get_weekly_report_api(
 
             this_week_total = sum(t.amount for t in this_week_transactions)
             last_week_total = sum(t.amount for t in last_week_transactions)
-            change_amount = this_week_total - last_week_total
-            change_percent = (
-                round((change_amount / last_week_total) * 100, 1)
-                if last_week_total > 0
-                else None
-            )
+            # 지난주 대비 변화량/변화율 계산은 reports_service.calculate_change()와 동일한 로직이라
+            # 중복 구현하지 않고 그대로 재사용한다.
+            change_amount, change_percent = calculate_change(this_week_total, last_week_total)
 
             category_comparison = build_weekly_category_comparison(
                 category_settings=category_settings,
