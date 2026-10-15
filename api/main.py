@@ -18,6 +18,7 @@ from routers import (
     challenges_router,
     shop_router,
     internal_router,      # ← 추가
+    social_router,
 )
 
 
@@ -50,6 +51,7 @@ app.include_router(reports_router.router)
 app.include_router(challenges_router.router)
 app.include_router(shop_router.router)
 app.include_router(internal_router.router)    # ← 추가
+app.include_router(social_router.router)
 
 
 @app.get("/")
