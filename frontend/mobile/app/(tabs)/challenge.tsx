@@ -69,9 +69,16 @@ export default function ChallengeScreen() {
   const [feedback, setFeedback] = useState<CompletionFeedback | null>(null);
 
   const completedCount = useMemo(
-    () => challenges.filter((challenge) => challenge.status === 'SUCCESS').length,
+    () =>
+      challenges.filter((challenge) => challenge.status === 'SUCCESS').length,
     [challenges]
   );
+  const verifyingCount = useMemo(
+    () =>
+      challenges.filter((challenge) => challenge.status === 'VERIFYING').length,
+    [challenges]
+  );
+  const markedCount = completedCount + verifyingCount;
   const totalXp = useMemo(
     () => challenges.reduce((sum, challenge) => sum + challenge.xp_reward, 0),
     [challenges]
@@ -93,7 +100,8 @@ export default function ChallengeScreen() {
     () => getPrimaryBudgetGuide(challenges),
     [challenges]
   );
-  const progress = challenges.length > 0 ? completedCount / challenges.length : 0;
+  const progress =
+    challenges.length > 0 ? markedCount / challenges.length : 0;
 
   const loadChallenges = useCallback(async () => {
     try {
@@ -121,10 +129,17 @@ export default function ChallengeScreen() {
   );
 
   const changeStatus = async (challenge: ApiChallenge) => {
-    if (updatingId !== null || challenge.status === 'FAILED') return;
+    if (updatingId !== null) return;
 
-    const nextStatus = challenge.status === 'SUCCESS' ? 'PENDING' : 'SUCCESS';
-    const previousPoints = user?.current_points ?? 0;
+    const isFinal =
+      challenge.status === 'SUCCESS' || challenge.status === 'FAILED';
+    if (isFinal) {
+      showToast('이미 최종 확인된 챌린지는 변경할 수 없어요.');
+      return;
+    }
+
+    const nextStatus =
+      challenge.status === 'VERIFYING' ? 'PENDING' : 'SUCCESS';
 
     try {
       setUpdatingId(challenge.challenge_id);
@@ -135,41 +150,23 @@ export default function ChallengeScreen() {
 
       setChallenges((current) =>
         current.map((item) =>
-          item.challenge_id === challenge.challenge_id ? result.challenge : item
+          item.challenge_id === challenge.challenge_id
+            ? result.challenge
+            : item
         )
       );
-      setUser((current) =>
-        current
-          ? {
-              ...current,
-              total_xp: result.userProgress.total_xp,
-              current_level: result.userProgress.current_level,
-              current_points: result.userProgress.current_points,
-            }
-          : current
-      );
 
-      if (nextStatus === 'SUCCESS') {
-        setFeedback({
-          challenge: result.challenge,
-          levelResult: result.levelResult,
-          pointsEarned: Math.max(
-            0,
-            result.userProgress.current_points - previousPoints
-          ),
-          currentPoints: result.userProgress.current_points,
-        });
+      if (result.challenge.status === 'VERIFYING') {
+        showToast('완료 대기로 표시했어요. 00:05에 최종 확인해요.');
       } else {
-        setFeedback(null);
-        const reversed = result.reversalResult?.points_reversed ?? 0;
-        showToast(
-          reversed > 0
-            ? `완료를 취소했고 ${reversed}P 보상도 회수됐어요.`
-            : '챌린지 완료를 취소했어요.'
-        );
+        showToast('완료 표시를 취소했어요.');
       }
-    } catch {
-      showToast('챌린지 상태를 저장하지 못했어요.');
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : '챌린지 상태를 저장하지 못했어요.'
+      );
     } finally {
       setUpdatingId(null);
     }
@@ -243,7 +240,9 @@ export default function ChallengeScreen() {
           <View style={styles.summaryTop}>
             <View>
               <Text style={styles.summaryLabel}>오늘 진행도</Text>
-              <Text style={styles.summaryValue}>{completedCount}/{challenges.length} 완료</Text>
+              <Text style={styles.summaryValue}>
+                완료 대기 {verifyingCount}개 · 확정 {completedCount}개
+              </Text>
             </View>
             <View style={styles.progressBadge}>
               <CheckCircle2 size={16} color={colors.butterDeep} strokeWidth={2.6} />
@@ -258,7 +257,7 @@ export default function ChallengeScreen() {
           <View style={styles.statRow}>
             <View style={styles.statItem}>
               <Trophy size={16} color={colors.subText} strokeWidth={2.4} />
-              <Text style={styles.statLabel}>총 보상</Text>
+              <Text style={styles.statLabel}>달성 시 보상</Text>
               <Text style={styles.statValue}>{totalXp} XP</Text>
             </View>
             <View style={styles.statItem}>
@@ -295,6 +294,15 @@ export default function ChallengeScreen() {
           </View>
         ) : null}
 
+        <View style={styles.verificationNotice}>
+          <Text style={styles.verificationNoticeTitle}>
+            완료 표시는 바로 달성으로 확정되지 않아요
+          </Text>
+          <Text style={styles.verificationNoticeText}>
+            오늘 표시한 챌린지는 다음 날 00:05에 지출 기록과 대조한 뒤 성공·실패와 XP가 최종 반영돼요.
+          </Text>
+        </View>
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>오늘의 챌린지</Text>
         </View>
@@ -311,6 +319,7 @@ export default function ChallengeScreen() {
             const Icon = categoryMeta.Icon;
             const metadata = getMetadata(challenge);
             const completed = challenge.status === 'SUCCESS';
+            const verifying = challenge.status === 'VERIFYING';
             const failed = challenge.status === 'FAILED';
             const updating = updatingId === challenge.challenge_id;
             const isStreak =
@@ -330,12 +339,13 @@ export default function ChallengeScreen() {
                   index % 3 === 0 && styles.challengeCardPink,
                   index % 3 === 1 && styles.challengeCardYellow,
                   index % 3 === 2 && styles.challengeCardMint,
+                  verifying && styles.challengeCardVerifying,
                   completed && styles.challengeCardCompleted,
                 ]}
               >
                 <View style={styles.challengeTop}>
                   <View style={[styles.challengeIcon, completed && styles.challengeIconCompleted]}>
-                    {completed ? (
+                    {completed || verifying ? (
                       <Check size={22} color={colors.successText} strokeWidth={3} />
                     ) : (
                       <Icon size={22} color={colors.text} strokeWidth={2.5} />
@@ -361,7 +371,11 @@ export default function ChallengeScreen() {
                   <View style={styles.chip}><Text style={styles.chipText}>{challenge.category_name}</Text></View>
                   <View style={styles.chip}><Text style={styles.chipText}>{challenge.challenge_type}</Text></View>
                   <View style={styles.chip}><Text style={styles.chipText}>{getDifficultyLabel(challenge.difficulty)}</Text></View>
-                  <View style={styles.rewardChip}><Text style={styles.rewardChipText}>+{challenge.xp_reward} XP</Text></View>
+                  <View style={styles.rewardChip}>
+                    <Text style={styles.rewardChipText}>
+                      달성 시 +{challenge.xp_reward} XP
+                    </Text>
+                  </View>
                 </View>
 
                 {metadata.context_label || hasLimit || hasPredictedToday || (isStreak && streakDays > 0) ? (
@@ -401,12 +415,12 @@ export default function ChallengeScreen() {
                 <AiMetadataPanel metadata={challenge.ai_metadata} />
 
                 <Pressable
-                  disabled={failed || updating}
+                  disabled={completed || failed || updating}
                   onPress={() => changeStatus(challenge)}
                   accessibilityRole="checkbox"
                   accessibilityState={{
-                    checked: completed,
-                    disabled: failed || updating,
+                    checked: completed || verifying,
+                    disabled: completed || failed || updating,
                   }}
                   style={({ pressed }) => [
                     styles.checkRow,
@@ -417,7 +431,7 @@ export default function ChallengeScreen() {
                   <View
                     style={[
                       styles.checkbox,
-                      completed && styles.checkboxChecked,
+                      (completed || verifying) && styles.checkboxChecked,
                       failed && styles.checkboxDisabled,
                     ]}
                   >
@@ -440,16 +454,22 @@ export default function ChallengeScreen() {
                       {updating
                         ? '저장 중'
                         : failed
-                          ? '종료된 챌린지'
+                          ? '실패'
                           : completed
-                            ? '완료됨'
-                            : '완료'}
+                            ? '달성 확정'
+                            : verifying
+                              ? '완료 대기'
+                              : '완료 표시'}
                     </Text>
-                    {!failed ? (
+                    {!failed && !completed ? (
                       <Text style={styles.checkHint}>
-                        {completed
-                          ? '체크를 해제하면 완료가 취소돼요.'
-                          : '실천했다면 체크해 주세요.'}
+                        {verifying
+                          ? '00:05에 지출 기록과 대조해 최종 확인해요.'
+                          : '완료로 표시하면 00:05 검증 전까지 대기 상태가 돼요.'}
+                      </Text>
+                    ) : completed ? (
+                      <Text style={styles.checkHint}>
+                        검증이 끝났고 보상이 반영됐어요.
                       </Text>
                     ) : null}
                   </View>
@@ -562,6 +582,27 @@ const styles = StyleSheet.create({
   budgetNoticeCopy: { flex: 1 },
   budgetNoticeTitle: { fontFamily: typography.fontFamily, fontSize: 13.5, fontWeight: '900', color: colors.warningText },
   budgetNoticeText: { marginTop: 4, fontFamily: typography.fontFamily, fontSize: 11.5, lineHeight: 17, color: colors.subText },
+  verificationNotice: {
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.butterPale,
+    padding: 13,
+    marginBottom: 16,
+  },
+  verificationNoticeTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 11.5,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  verificationNoticeText: {
+    marginTop: 4,
+    fontFamily: typography.fontFamily,
+    fontSize: 9.5,
+    lineHeight: 15,
+    color: colors.subText,
+  },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 11 },
   sectionTitle: { fontFamily: typography.fontFamily, fontSize: 19, fontWeight: '900', color: colors.text },
   sectionMeta: { fontFamily: typography.fontFamily, fontSize: 11.5, fontWeight: '800', color: colors.mutedText },
@@ -570,6 +611,9 @@ const styles = StyleSheet.create({
   challengeCardPink: { backgroundColor: colors.popPink },
   challengeCardYellow: { backgroundColor: colors.popYellow },
   challengeCardMint: { backgroundColor: colors.popMint },
+  challengeCardVerifying: {
+    borderColor: colors.butterDeep,
+  },
   challengeCardCompleted: { backgroundColor: colors.successBg, borderColor: colors.border },
   challengeTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   challengeIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
