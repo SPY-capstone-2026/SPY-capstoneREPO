@@ -34,6 +34,7 @@ export type MeResponse = {
   total_xp: number;
   current_level: number;
   current_points: number;
+  nickname: string | null;
   created_at?: string | null;
 };
 
@@ -229,6 +230,7 @@ export type UpdateChallengeStatusResponse = {
 };
 
 export type UpdateMeRequest = {
+  nickname?: string;
   email?: string;
   income_type?: string;
   payday?: number;
@@ -315,4 +317,88 @@ export type EquipInventoryRequest = {
 export type EquipInventoryResponse = {
   status: 'success' | string;
   data: InventoryItem;
+};
+
+
+export type PublicItem = {
+  item_id: string;
+  name: string;
+  category:
+    | 'CHARACTER'
+    | 'ACCESSORY'
+    | 'WALLPAPER'
+    | 'FLOORING'
+    | 'FURNITURE'
+    | 'DECOR'
+    | 'THEME'
+    | string;
+  image_url: string | null;
+  rarity: 'COMMON' | 'RARE' | 'EPIC' | string;
+};
+
+export type PublicUser = {
+  user_id: string;
+  nickname: string | null;
+  current_level: number;
+  total_xp: number;
+  character: PublicItem | null;
+  equipped_items: PublicItem[];
+};
+
+export type FriendshipStatus =
+  | 'SELF'
+  | 'NONE'
+  | 'REQUEST_SENT'
+  | 'REQUEST_RECEIVED'
+  | 'FRIEND';
+
+export type PublicProfile = PublicUser & {
+  friendship_status: FriendshipStatus;
+};
+
+export type FriendRequest = {
+  request_id: string;
+  direction: 'SENT' | 'RECEIVED';
+  status: 'PENDING' | 'ACCEPTED';
+  created_at: string | null;
+  user: PublicUser;
+};
+
+export type PublicProfileResponse = {
+  status: 'success' | string;
+  data: PublicProfile;
+};
+
+export type FriendsResponse = {
+  status: 'success' | string;
+  count: number;
+  data: PublicUser[];
+};
+
+export type FriendRequestsResponse = {
+  status: 'success' | string;
+  count: number;
+  data: FriendRequest[];
+};
+
+export type FriendRequestResponse = {
+  status: 'success' | string;
+  data: FriendRequest & {
+    auto_accepted: boolean;
+  };
+};
+
+export type FriendRequestActionResponse = {
+  status: 'success' | string;
+  data: {
+    request_id: string;
+    status?: 'ACCEPTED' | string;
+  };
+};
+
+export type DeleteFriendResponse = {
+  status: 'success' | string;
+  data: {
+    user_id: string;
+  };
 };
