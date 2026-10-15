@@ -42,6 +42,7 @@ const emptyUser: MeResponse = {
   total_xp: 0,
   current_level: 1,
   current_points: 0,
+  nickname: null,
   created_at: null,
 };
 
@@ -92,6 +93,7 @@ export default function MyPageScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [editNickname, setEditNickname] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editIncomeType, setEditIncomeType] = useState('STUDENT');
   const [editPayday, setEditPayday] = useState('25');
@@ -149,6 +151,7 @@ export default function MyPageScreen() {
   );
 
   const startEdit = () => {
+    setEditNickname(user.nickname ?? '');
     setEditEmail(user.email);
     setEditIncomeType(user.income_type);
     setEditPayday(String(user.payday));
@@ -173,6 +176,7 @@ export default function MyPageScreen() {
       setIsSaving(true);
 
       const updated = await updateCurrentUser({
+        nickname: editNickname.trim() || undefined,
         email: editEmail.trim(),
         income_type: editIncomeType,
         payday,
@@ -233,8 +237,11 @@ export default function MyPageScreen() {
             </View>
 
             <View style={styles.profileCopy}>
-              <Text style={styles.email}>{user.email || 'Moni 사용자'}</Text>
+              <Text style={styles.email}>
+                {user.nickname || user.email || 'Moni 사용자'}
+              </Text>
               <Text style={styles.profileMeta}>
+                {user.nickname ? `${user.email} · ` : ''}
                 {getIncomeTypeLabel(user.income_type)} ·{' '}
                 {getSpendProfileLabel(user.spend_profile)} · 매월 {user.payday}일
               </Text>
@@ -337,10 +344,12 @@ export default function MyPageScreen() {
       <ProfileEditModal
         visible={isEditing}
         saving={isSaving}
+        nickname={editNickname}
         email={editEmail}
         incomeType={editIncomeType}
         payday={editPayday}
         spendProfile={editSpendProfile}
+        setNickname={setEditNickname}
         setEmail={setEditEmail}
         setIncomeType={setEditIncomeType}
         setPayday={setEditPayday}
@@ -405,10 +414,12 @@ function SettingSwitch({
 type ProfileEditModalProps = {
   visible: boolean;
   saving: boolean;
+  nickname: string;
   email: string;
   incomeType: string;
   payday: string;
   spendProfile: string;
+  setNickname: (value: string) => void;
   setEmail: (value: string) => void;
   setIncomeType: (value: string) => void;
   setPayday: (value: string) => void;
@@ -420,10 +431,12 @@ type ProfileEditModalProps = {
 function ProfileEditModal({
   visible,
   saving,
+  nickname,
   email,
   incomeType,
   payday,
   spendProfile,
+  setNickname,
   setEmail,
   setIncomeType,
   setPayday,
@@ -444,6 +457,17 @@ function ProfileEditModal({
           <Text style={styles.modalDescription}>
             AI 분석과 챌린지에 사용하는 기본 정보를 확인하고 수정해요.
           </Text>
+
+          <Text style={styles.editLabel}>닉네임</Text>
+          <TextInput
+            style={styles.editInput}
+            value={nickname}
+            onChangeText={setNickname}
+            autoCapitalize="none"
+            maxLength={12}
+            placeholder="2~12자 닉네임"
+            placeholderTextColor={colors.mutedText}
+          />
 
           <Text style={styles.editLabel}>이메일</Text>
           <TextInput
