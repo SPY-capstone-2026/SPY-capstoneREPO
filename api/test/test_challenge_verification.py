@@ -460,6 +460,61 @@ def test_unverifiable_fallback_challenge_follows_policy(db, monkeypatch):
     assert challenge(rejected).status == "FAILED"
 
 
+# ================================================ 통계/스트릭도 KST 기준인지
+# ※ 날짜는 일부러 실제 오늘 날짜와 멀리 떨어진 2027년으로 고정한다.
+#   (실제 시스템 날짜와 우연히 같으면 date.today() 회귀를 못 잡는다)
+# 2027-03-14 15:30 UTC = 2027-03-15(월) 00:30 KST
+def _freeze_kst_monday_dawn(monkeypatch):
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            now_utc = datetime(2027, 3, 14, 15, 30, tzinfo=timezone.utc)
+            return now_utc.astimezone(tz) if tz else now_utc.replace(tzinfo=None)
+    monkeypatch.setattr(time_utils, "datetime", FrozenDatetime)
+
+
+def test_weekly_count_uses_kst_week_on_monday_dawn(db, monkeypatch):
+    """KST 월요일 00:30 (= UTC 일요일 15:30). '이번 주'는 월요일부터여야 한다."""
+    from services.challenge_stats_service import get_weekly_completed_count
+    _freeze_kst_monday_dawn(monkeypatch)
+    new_challenge(d=date(2027, 3, 15), status="SUCCESS")   # KST 월요일 날짜의 달성 챌린지
+
+    with Session(models.engine) as s:
+        result = get_weekly_completed_count(s, USER_ID)
+    assert result["week_start"] == "2027-03-15" and result["completed_count"] == 1
+
+
+def test_streak_breaks_when_yesterday_missed_even_in_kst_dawn(db, monkeypatch):
+    """KST 3/15 00:30 (= UTC 3/14). 어제(3/14)를 못 깼다면 스트릭은 0이어야 한다."""
+    from services.challenge_stats_service import get_current_streak
+    _freeze_kst_monday_dawn(monkeypatch)
+    new_challenge(d=date(2027, 3, 13), status="SUCCESS")   # 그제만 달성, 어제(3/14)는 미달성
+
+    with Session(models.engine) as s:
+        assert get_current_streak(s, USER_ID)["current_streak"] == 0
+
+
+def test_streak_counts_from_yesterday_in_kst_dawn(db, monkeypatch):
+    """KST 3/15 00:30. 오늘은 아직 정산 전이니 어제(3/14)부터 거슬러 올라가 2일."""
+    from services.challenge_stats_service import get_current_streak
+    _freeze_kst_monday_dawn(monkeypatch)
+    new_challenge(d=date(2027, 3, 13), status="SUCCESS")
+    new_challenge(d=date(2027, 3, 14), status="SUCCESS", category="식비")
+
+    with Session(models.engine) as s:
+        assert get_current_streak(s, USER_ID)["current_streak"] == 2
+
+
+def test_by_category_default_week_is_kst(db, client, monkeypatch):
+    _freeze_kst_monday_dawn(monkeypatch)
+    new_challenge(d=date(2027, 3, 15), status="SUCCESS", xp=30)
+
+    r = client.get("/challenges/stats/by-category")   # 기본값: 이번 주
+    data = r.json()["data"]
+    assert data["start_date"] == "2027-03-15"
+    assert data["categories"][0]["completed_count"] == 1 and data["categories"][0]["xp_earned"] == 30
+
+
 # ======================================================= 오류 격리 / 원자성
 def test_one_failing_challenge_does_not_block_others_and_rolls_back(db, monkeypatch):
     good1 = new_challenge(d=D - timedelta(days=1), limit=4000, xp=20)
@@ -590,6 +645,28 @@ def test_internal_endpoint_default_runs_as_of_kst_today(db, client, monkeypatch)
     new_challenge(d=D, limit=4000)
     r = client.post("/internal/challenges/verify", headers={"X-Cron-Secret": "s3cret"})
     assert r.json()["data"]["as_of"] == NEXT_DAY.isoformat() and r.json()["data"]["succeeded"] == 1
+
+
+def test_internal_endpoint_user_id_scopes_manual_run(db, client, monkeypatch):
+    """as_of 수동 실행 시 user_id 를 주면 그 유저의 챌린지만 정산하고 다른 유저는 건드리지 않는다."""
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    mine = new_challenge(d=D, limit=4000, user_id=USER_ID)
+    others = new_challenge(d=D, limit=4000, user_id=OTHER_USER_ID)
+
+    r = client.post("/internal/challenges/verify", headers={"X-Cron-Secret": "s3cret"},
+                    params={"as_of": NEXT_DAY.isoformat(), "user_id": USER_ID})
+    data = r.json()["data"]
+    assert data["found"] == 1 and data["succeeded"] == 1 and data["user_id"] == USER_ID
+
+    assert challenge(mine).status == "SUCCESS"
+    assert challenge(others).status == "VERIFYING"          # 다른 유저는 그대로
+    assert user(OTHER_USER_ID).total_xp == 0
+
+    # user_id 없이 돌리면(운영 스케줄러 기본 동작) 나머지도 정산된다
+    r2 = client.post("/internal/challenges/verify", headers={"X-Cron-Secret": "s3cret"},
+                     params={"as_of": NEXT_DAY.isoformat()})
+    assert r2.json()["data"]["succeeded"] == 1 and "user_id" not in r2.json()["data"]
+    assert challenge(others).status == "SUCCESS"
 
 
 # ------------------------------------------------------------------ 공용 픽스처

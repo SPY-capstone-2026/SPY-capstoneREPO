@@ -9,7 +9,7 @@ from auth import get_current_user_id
 from schemas import ChallengeStatusUpdateRequest
 from serializers import serialize_challenge, serialize_user_progress
 from services.common_service import ensure_default_category_settings
-from services.challenge_service import make_fallback_challenge
+from services.challenge_service import make_fallback_challenge, serialize_generation
 from services.time_utils import kst_today
 from services.challenge_verification_service import (
     STATUS_PENDING,
@@ -64,7 +64,7 @@ def get_challenge_stats_by_category_api(
     with Session(engine) as session:
         # start_date/end_date를 직접 넘기면 그게 우선, 안 넘기면 period 기준으로 자동 계산
         if start_date is None and end_date is None and period == "week":
-            today = date.today()
+            today = kst_today()
             start_date = today - timedelta(days=today.weekday())  # 이번 주 월요일
             end_date = start_date + timedelta(days=6)              # 이번 주 일요일
 
@@ -124,6 +124,13 @@ def generate_challenges(user_id: str = Depends(get_current_user_id)):
         # (UTC 서버에서 date.today()를 쓰면 KST 00~09시에 어제 날짜로 챌린지가 만들어진다)
         today = kst_today()
 
+        # 주의: ensure_default_category_settings 는 내부에서 commit 한다. 트랜잭션 단위 잠금은 커밋에서 풀리므로
+        # 반드시 이 호출 '다음에' 잠금을 잡아야 한다. (순서를 바꾸면 중복 생성 방어가 조용히 깨진다)
+        category_settings = ensure_default_category_settings(session, user_id)
+
+        # 존재 확인 -> 생성 -> 저장 구간 전체를 같은 유저·날짜 기준으로 직렬화
+        serialize_generation(session, user_id, today)
+
         existing_challenges = session.exec(
             select(DailyChallenge)
             .where(DailyChallenge.user_id == user_id)
@@ -142,8 +149,6 @@ def generate_challenges(user_id: str = Depends(get_current_user_id)):
         transactions = session.exec(
             select(Transaction).where(Transaction.user_id == user_id)
         ).all()
-
-        category_settings = ensure_default_category_settings(session, user_id)
 
         transactions_df = pd.DataFrame([t.model_dump() for t in transactions])
         category_settings_df = pd.DataFrame([c.model_dump() for c in category_settings])

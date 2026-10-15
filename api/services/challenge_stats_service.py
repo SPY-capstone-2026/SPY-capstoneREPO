@@ -3,6 +3,7 @@ from typing import Optional
 from collections import defaultdict
 from sqlmodel import Session, select
 from models import DailyChallenge
+from services.time_utils import kst_today
 
 
 def get_completed_challenges(
@@ -33,7 +34,7 @@ def get_weekly_completed_count(
     target_date: Optional[date] = None,
 ) -> dict:
     """target_date가 속한 주(월요일 시작)의 완료 챌린지 개수."""
-    target_date = target_date or date.today()
+    target_date = target_date or kst_today()  # 챌린지 날짜가 KST 기준이므로 '이번 주'도 KST
     week_start = target_date - timedelta(days=target_date.weekday())  # 이번 주 월요일
     week_end = week_start + timedelta(days=6)  # 이번 주 일요일
 
@@ -70,7 +71,7 @@ def get_current_streak(
     if not completed_dates:
         return {"current_streak": 0, "last_completed_date": None}
 
-    today = date.today()
+    today = kst_today()  # 스트릭 기준일도 KST (UTC면 KST 00~09시에 하루 전으로 계산됨)
     cursor = today if today in completed_dates else today - timedelta(days=1)
 
     streak = 0

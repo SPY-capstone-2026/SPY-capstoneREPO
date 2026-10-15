@@ -15,7 +15,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20   # 아래 curl 최악 소요: (120초 x 6회) + (30초 x 5회) = 14.5분
     steps:
       - name: Call challenge verification endpoint
         env:
@@ -25,7 +25,7 @@ jobs:
           # Render 무료 서버는 슬립에서 깨어나는 데 최대 1분 이상 걸릴 수 있어서
           # 타임아웃을 넉넉히 두고, 실패하면 간격을 두고 재시도한다.
           curl --fail-with-body --silent --show-error \
-            --max-time 180 \
+            --max-time 120 \
             --retry 5 --retry-delay 30 --retry-all-errors \
             -X POST "$API_BASE_URL/internal/challenges/verify" \
             -H "X-Cron-Secret: $CRON_SECRET"
