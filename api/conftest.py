@@ -23,3 +23,10 @@ if "moni_engine.engine" not in sys.modules:
     _pkg.engine = _eng
     sys.modules["moni_engine"] = _pkg
     sys.modules["moni_engine.engine"] = _eng
+
+if "moni_engine.report" not in sys.modules:
+    _rep = types.ModuleType("moni_engine.report")
+    _rep.generate_weekly_comment = lambda *a, **k: {"comment": "stub", "comment_source": "stub"}
+    _rep.generate_monthly_comment = lambda *a, **k: {"comment": "stub", "comment_source": "stub"}
+    sys.modules["moni_engine.report"] = _rep
+    sys.modules["moni_engine"].report = _rep

@@ -19,6 +19,7 @@ from services.reports_service import (
 from services.report_cache_service import get_or_generate_report
 from services.challenge_stats_service import get_total_xp_earned, get_category_stats
 from services.budget_service import get_budget_change_history
+from serializers import serialize_budget_change
 from moni_engine.report import generate_weekly_comment, generate_monthly_comment
 
 router = APIRouter()
@@ -83,6 +84,14 @@ def get_weekly_report_api(
             challenges_total = sum(c["total_count"] for c in weekly_category_stats)
             challenges_completed = sum(c["completed_count"] for c in weekly_category_stats)
 
+            # 이번 주에 예산을 바꾼 기록 (언제 / 어느 카테고리 / 얼마 -> 얼마)
+            budget_changes = [
+                serialize_budget_change(log)
+                for log in get_budget_change_history(
+                    session, user_id, start_date=week_start, end_date=week_end
+                )
+            ]
+
             payload = {
                 "week_start": week_start.isoformat(),
                 "week_end": week_end.isoformat(),
@@ -98,6 +107,7 @@ def get_weekly_report_api(
                 },
                 "daily_trend": daily_trend,
                 "category_comparison": category_comparison,
+                "budget_changes": budget_changes,
             }
 
             # 총평 생성 — build_report() 안에서 붙여야 캐싱될 때 comment도 같이 저장됨
@@ -200,6 +210,13 @@ def get_monthly_report_api(
             challenges_total = sum(c["total_count"] for c in monthly_category_stats)
             challenges_completed = sum(c["completed_count"] for c in monthly_category_stats)
 
+            budget_changes = [
+                serialize_budget_change(log)
+                for log in get_budget_change_history(
+                    session, user_id, start_date=first_day, end_date=last_day
+                )
+            ]
+
             payload = {
                 "month": first_day.strftime("%Y-%m"),
                 "is_current_month": is_current_month,
@@ -217,13 +234,13 @@ def get_monthly_report_api(
                 "weekly_breakdown": weekly_breakdown,
                 "evaluated_categories": evaluated_categories,
                 "category_overrun": category_overrun,
+                "budget_changes": budget_changes,
             }
 
             challenge_stats = {"categories": monthly_category_stats}
-            budget_history = get_budget_change_history(
-                session, user_id, start_date=first_day, end_date=last_day
-            )
-            comment_result = generate_monthly_comment(payload, challenge_stats, budget_history)
+            # AI(report.py)는 dict 만 읽는다. DB 객체(BudgetChangeLog)를 그대로 넘기면 조용히 무시되므로
+            # 위에서 직렬화한 dict 목록을 넘긴다.
+            comment_result = generate_monthly_comment(payload, challenge_stats, budget_changes)
             payload["comment"] = comment_result["comment"]
             payload["comment_source"] = comment_result["comment_source"]
 

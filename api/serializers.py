@@ -1,4 +1,12 @@
-from models import User, DailyChallenge, UserCategorySetting, Transaction, ShopItem, UserInventory
+from models import (
+    User,
+    DailyChallenge,
+    UserCategorySetting,
+    Transaction,
+    ShopItem,
+    UserInventory,
+    BudgetChangeLog,
+)
 
 
 def serialize_user_progress(user: User):
@@ -37,7 +45,9 @@ def serialize_challenge(challenge: DailyChallenge):
         "xp_reward": challenge.xp_reward,
         "ai_metadata": challenge.ai_metadata,
         "reward_snapshot": challenge.reward_snapshot,
-        "completed_at": challenge.completed_at.isoformat() if challenge.completed_at else None,
+        "completed_at": (
+            challenge.completed_at.isoformat() if challenge.completed_at else None
+        ),
         "verification_result": challenge.verification_result,
     }
 
@@ -94,4 +104,19 @@ def serialize_inventory_item(inventory: UserInventory, item: ShopItem = None):
         "acquired_at": (
             inventory.acquired_at.isoformat() if inventory.acquired_at else None
         ),
+    }
+
+
+def serialize_budget_change(log: BudgetChangeLog):
+    """
+    예산 변경 이력 한 건. 리포트에 '언제, 어느 카테고리, 얼마 -> 얼마'로 표시하고,
+    AI 총평(report.py)에도 같은 dict 를 넘긴다. (AI 쪽은 DB 객체가 아니라 dict 만 읽는다)
+    키 이름(category_name/old_limit/new_limit/changed_at)은 AI FIELD MAP 과 맞춰져 있으므로 바꾸지 말 것.
+    """
+    return {
+        "category_name": log.category_name,
+        "old_limit": log.old_limit,
+        "new_limit": log.new_limit,
+        "direction": "증액" if log.new_limit > log.old_limit else "감액",
+        "changed_at": log.changed_at.isoformat() if log.changed_at else None,
     }
