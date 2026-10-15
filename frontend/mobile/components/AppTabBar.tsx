@@ -7,6 +7,7 @@ import {
   Home,
   ReceiptText,
   UserRound,
+  UsersRound,
 } from 'lucide-react-native';
 import {
   Animated,
@@ -28,6 +29,7 @@ type TabMeta = {
 const TAB_META: Record<string, TabMeta> = {
   home: { label: '홈', Icon: Home },
   challenge: { label: '챌린지', Icon: ClipboardCheck },
+  social: { label: '소셜', Icon: UsersRound },
   transactions: { label: '소비', Icon: ReceiptText },
   report: { label: '리포트', Icon: BarChart3 },
   mypage: { label: '마이', Icon: UserRound },
@@ -36,6 +38,7 @@ const TAB_META: Record<string, TabMeta> = {
 const TAB_ORDER = [
   'home',
   'challenge',
+  'social',
   'transactions',
   'report',
   'mypage',
