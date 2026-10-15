@@ -111,7 +111,7 @@ export type ApiChallenge = {
   challenge_type: string;
   challenge_text: string;
   difficulty: string;
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | string;
+  status: 'PENDING' | 'VERIFYING' | 'SUCCESS' | 'FAILED' | string;
   xp_reward: number;
   ai_metadata?: ChallengeAiMetadata | null;
   reward_snapshot?: LevelResult | null;
@@ -209,7 +209,7 @@ export type MonthlyReportResponse = {
 };
 
 export type UpdateChallengeStatusRequest = {
-  status: 'PENDING' | 'SUCCESS' | 'FAILED';
+  status: 'PENDING' | 'VERIFYING' | 'SUCCESS' | 'FAILED';
 };
 
 export type UserProgressResponse = {
