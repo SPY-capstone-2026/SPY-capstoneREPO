@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import {
   Check,
@@ -109,15 +109,6 @@ export default function SocialScreen() {
   );
 
   const requestCount = received.length + sent.length;
-
-  const receivedByUserId = useMemo(
-    () => new Map(received.map((item) => [item.user.user_id, item])),
-    [received]
-  );
-  const sentByUserId = useMemo(
-    () => new Map(sent.map((item) => [item.user.user_id, item])),
-    [sent]
-  );
 
   const saveNickname = async () => {
     const nickname = nicknameDraft.trim();
