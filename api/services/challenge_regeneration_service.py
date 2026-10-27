@@ -34,12 +34,11 @@ from sqlmodel import Session, select
 
 from models import engine as default_engine, User, DailyChallenge, Transaction, UserCategorySetting
 from services.challenge_service import serialize_generation
+from services.challenge_verification_service import STATUS_PENDING
 from services.time_utils import kst_today
 from moni_engine.engine import get_today_challenges
 
 logger = logging.getLogger(__name__)
-
-STATUS_PENDING = "PENDING"
 
 
 def _origin(meta: Optional[dict], challenge_type: Optional[str]) -> str:

@@ -18,7 +18,9 @@ from services.social_service import (
     list_friends,
     remove_friend,
     get_public_profile,
+    get_friend_ranking,
 )
+from services.time_utils import kst_today
 
 router = APIRouter()
 
@@ -137,6 +139,29 @@ def list_friends_api(user_id: str = Depends(get_current_user_id)):
             "status": "success",
             "count": len(rows),
             "data": [serialize_public_user(u, equipped) for u, equipped in rows],
+        }
+
+
+# [소셜 10] 친구 랭킹: 나 + 친구를 챌린지 달성 개수 순으로 (period=week 기본 | month | all)
+@router.get("/friends/ranking")
+def get_friend_ranking_api(period: str = "week", user_id: str = Depends(get_current_user_id)):
+    with Session(engine) as session:
+        result = get_friend_ranking(session, user_id, period, kst_today())
+        return {
+            "status": "success",
+            "period": period,
+            "start_date": result["start"].isoformat() if result["start"] else None,
+            "end_date": result["end"].isoformat() if result["end"] else None,
+            "count": len(result["entries"]),
+            "data": [
+                {
+                    "rank": e["rank"],
+                    "is_me": e["is_me"],
+                    "completed_count": e["completed_count"],
+                    "user": serialize_public_user(e["user"], e["equipped_items"]),
+                }
+                for e in result["entries"]
+            ],
         }
 
 

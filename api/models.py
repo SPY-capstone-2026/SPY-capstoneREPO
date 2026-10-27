@@ -2,6 +2,8 @@ from typing import Optional, Dict, Any
 from sqlalchemy import Column, JSON, UniqueConstraint
 from sqlmodel import Field, SQLModel, create_engine
 from datetime import date, time, datetime
+from dotenv import load_dotenv
+import os
 import uuid
 
 
@@ -147,9 +149,6 @@ class UserInventory(SQLModel, table=True):
 # ----------------------------------------
 # 데이터베이스 연결 엔진 설정
 # ----------------------------------------
-from dotenv import load_dotenv
-import os
-
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./moni.db")
