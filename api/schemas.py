@@ -27,6 +27,7 @@ class SignupRequest(BaseModel):
     income_type: str = "STUDENT"
     payday: int = 25
     spend_profile: str = "IMPULSIVE"
+    nickname: Optional[str] = None  # 선택. 비우면 나중에 PATCH /me 로 설정
 
 
 class LoginRequest(BaseModel):

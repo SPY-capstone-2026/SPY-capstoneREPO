@@ -10,14 +10,16 @@
 """
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional
+from datetime import date, timedelta
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy import func
 from sqlmodel import Session, select, or_
 
-from models import User, Friendship, ShopItem, UserInventory
+from models import User, Friendship, ShopItem, UserInventory, DailyChallenge
 from services.time_utils import kst_now_naive
 
 FRIEND_PENDING = "PENDING"
@@ -257,3 +259,66 @@ def get_public_profile(session: Session, viewer_id: str, target_user_id: str) ->
         "equipped_items": equipped.get(target_user_id, []),
         "friendship_status": friendship_status_for(viewer_id, target_user_id, friendship),
     }
+
+
+# ----------------------------------------
+# 친구 랭킹 (나 + 친구, 챌린지 달성 개수 순)
+# 공개하는 값은 '달성 개수'뿐이다. 어떤 카테고리 챌린지였는지, 실패/미도전 개수는 내보내지 않는다.
+# ----------------------------------------
+RANKING_PERIODS = ("week", "month", "all")
+
+
+def ranking_range(period: str, today: date) -> Tuple[Optional[date], Optional[date]]:
+    """week = 이번 주 월~일, month = 이번 달 1일~말일, all = 전체 (KST 기준 today)."""
+    if period == "week":
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=6)
+    if period == "month":
+        start = today.replace(day=1)
+        next_month = (start + timedelta(days=32)).replace(day=1)
+        return start, next_month - timedelta(days=1)
+    if period == "all":
+        return None, None
+    raise HTTPException(status_code=400, detail="period 는 week, month, all 중 하나입니다")
+
+
+def get_friend_ranking(session: Session, me_id: str, period: str, today: date) -> dict:
+    """
+    반환: {"start": date|None, "end": date|None,
+           "entries": [{"rank", "user", "equipped_items", "completed_count", "is_me"}, ...]}
+    정렬: 달성 개수 많은 순 → 레벨 높은 순 → 닉네임 순. 달성 개수가 같으면 같은 순위(1, 1, 3 ...).
+    """
+    start, end = ranking_range(period, today)
+
+    friend_ids = [u.user_id for u, _ in list_friends(session, me_id)]
+    member_ids = [me_id] + friend_ids
+    users = _get_users_map(session, member_ids)
+    equipped = get_equipped_items_map(session, member_ids)
+
+    query = (
+        select(DailyChallenge.user_id, func.count())
+        .where(DailyChallenge.user_id.in_(member_ids))
+        .where(DailyChallenge.status == "SUCCESS")
+    )
+    if start is not None:
+        query = query.where(DailyChallenge.challenge_date >= start)
+        query = query.where(DailyChallenge.challenge_date <= end)
+    counts = dict(session.exec(query.group_by(DailyChallenge.user_id)).all())
+
+    members = [users[uid] for uid in member_ids if uid in users]
+    members.sort(key=lambda u: (-counts.get(u.user_id, 0), -u.current_level, u.nickname or "\uffff"))
+
+    entries = []
+    previous_count, previous_rank = None, 0
+    for index, user in enumerate(members, start=1):
+        count = int(counts.get(user.user_id, 0))
+        rank = previous_rank if count == previous_count else index
+        previous_count, previous_rank = count, rank
+        entries.append({
+            "rank": rank,
+            "user": user,
+            "equipped_items": equipped.get(user.user_id, []),
+            "completed_count": count,
+            "is_me": user.user_id == me_id,
+        })
+    return {"start": start, "end": end, "entries": entries}
