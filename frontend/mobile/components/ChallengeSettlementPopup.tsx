@@ -6,6 +6,7 @@ import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
 import { getCurrentUser } from '@/services/authService';
 import { apiRequest } from '@/services/apiClient';
+import { useMoniTheme } from '@/contexts/MoniThemeContext';
 
 type ChallengeEntry = {
   challenge_id: number;
@@ -61,6 +62,7 @@ async function acknowledge(key: string): Promise<void> {
 
 /** Mounted once inside the authenticated tab layout, not on each tab. */
 export function ChallengeSettlementPopup() {
+  const { theme } = useMoniTheme();
   const [queue, setQueue] = useState<Settlement[]>([]);
   const [userId, setUserId] = useState('');
   const mounted = useRef(true);
@@ -116,15 +118,15 @@ export function ChallengeSettlementPopup() {
   return (
     <Modal visible={Boolean(showing)} animationType="fade" transparent onRequestClose={() => void closeCurrent()}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: theme.surface }]}>
           <Text style={styles.title}>챌린지 정산 결과</Text>
           <Text style={styles.subtitle}>
             {showing?.date ?? ''} · 총 {showing?.total ?? 0}개 중 {showing?.success ?? 0}개 달성
           </Text>
           <View style={styles.stats}>
-            <View style={styles.stat}><Text style={styles.statNumber}>{showing?.success ?? 0}</Text><Text style={styles.statLabel}>달성</Text></View>
-            <View style={styles.stat}><Text style={styles.statNumber}>{showing?.failed ?? 0}</Text><Text style={styles.statLabel}>실패</Text></View>
-            <View style={styles.stat}><Text style={styles.statNumber}>{showing?.unattempted ?? 0}</Text><Text style={styles.statLabel}>미완료</Text></View>
+            <View style={[styles.stat, { backgroundColor: theme.soft }]}><Text style={styles.statNumber}>{showing?.success ?? 0}</Text><Text style={styles.statLabel}>달성</Text></View>
+            <View style={[styles.stat, { backgroundColor: theme.soft }]}><Text style={styles.statNumber}>{showing?.failed ?? 0}</Text><Text style={styles.statLabel}>실패</Text></View>
+            <View style={[styles.stat, { backgroundColor: theme.soft }]}><Text style={styles.statNumber}>{showing?.unattempted ?? 0}</Text><Text style={styles.statLabel}>미완료</Text></View>
           </View>
           <ScrollView style={styles.scroll} showsVerticalScrollIndicator>
             <Text style={styles.heading}>달성한 챌린지</Text>
@@ -144,7 +146,7 @@ export function ChallengeSettlementPopup() {
               ))}
             </>}
             <Text style={styles.heading}>획득한 보상</Text>
-            <Text style={styles.reward}>{showing?.earned_xp ?? 0} XP · {showing?.earned_points ?? 0} P</Text>
+            <Text style={[styles.reward, { color: theme.deep }]}>{showing?.earned_xp ?? 0} XP · {showing?.earned_points ?? 0} P</Text>
             {(showing?.unlocked_items?.length ?? 0) > 0 && (
               <Text style={styles.item}>새 아이템: {showing?.unlocked_items.join(', ')}</Text>
             )}
@@ -152,7 +154,7 @@ export function ChallengeSettlementPopup() {
               <Text key={`${level.new_level}-${i}`} style={styles.item}>레벨업: Lv.{level.old_level} → Lv.{level.new_level}</Text>
             ))}
           </ScrollView>
-          <Pressable style={styles.button} onPress={() => void closeCurrent()} accessibilityRole="button">
+          <Pressable style={[styles.button, { backgroundColor: theme.accent }]} onPress={() => void closeCurrent()} accessibilityRole="button">
             <Text style={styles.buttonText}>{queue.length > 1 ? `확인 · 다음 정산 ${queue.length - 1}건` : '확인'}</Text>
           </Pressable>
         </View>

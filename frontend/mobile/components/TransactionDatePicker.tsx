@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, CalendarDays, X } from 'lucide-react-native'
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { typography } from '@/constants/typography';
+import { useMoniTheme } from '@/contexts/MoniThemeContext';
 
 type Props = { value: string; onChange: (date: string) => void };
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -15,6 +16,7 @@ function parse(date: string) {
 }
 
 export function TransactionDatePicker({ value, onChange }: Props) {
+  const { theme } = useMoniTheme();
   const [visible, setVisible] = useState(false);
   const [year, setYear] = useState(() => parse(value).getFullYear());
   const [month, setMonth] = useState(() => parse(value).getMonth());
@@ -44,12 +46,12 @@ export function TransactionDatePicker({ value, onChange }: Props) {
 
   return <>
     <Pressable onPress={() => setVisible(true)} style={styles.launch} accessibilityRole="button" accessibilityLabel="거래 날짜 선택">
-      <CalendarDays size={16} color={colors.subText} />
+      <CalendarDays size={16} color={theme.deep} />
       <Text style={styles.launchText}>{value || '날짜 선택'}</Text>
     </Pressable>
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: theme.surface }]}>
           <View style={styles.head}>
             <Pressable style={styles.nav} onPress={() => shift(-1)} accessibilityLabel="이전 달"><ChevronLeft color={colors.text} size={20}/></Pressable>
             <Text style={styles.month}>{year}년 {month + 1}월</Text>
@@ -63,13 +65,13 @@ export function TransactionDatePicker({ value, onChange }: Props) {
               const selected = value === date;
               return <View key={`${year}-${month}-${i}`} style={styles.cell}>
                 {day ? <Pressable onPress={() => pick(day)} accessibilityRole="button" accessibilityLabel={date}
-                  style={[styles.dayButton, selected && styles.selected]}>
+                  style={[styles.dayButton, selected && { backgroundColor: theme.accent }]}>
                   <Text style={[styles.dayNumber, selected && styles.selectedText]}>{day}</Text>
                 </Pressable> : null}
               </View>;
             })}
           </View>
-          <Pressable style={styles.todayButton} onPress={() => { onChange(ymd(new Date())); setVisible(false); }}>
+          <Pressable style={[styles.todayButton, { backgroundColor: theme.soft, borderRadius: 12 }]} onPress={() => { onChange(ymd(new Date())); setVisible(false); }}>
             <Text style={styles.todayLabel}>오늘 날짜 선택</Text>
           </Pressable>
         </View>
@@ -90,7 +92,7 @@ const styles = StyleSheet.create({
   cell: { width: '14.2857%', height: 42, alignItems: 'center', justifyContent: 'center' },
   weekday: { fontSize: 12, color: colors.subText, fontWeight: '800' },
   dayButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
-  selected: { backgroundColor: colors.butterStrong },
+  selected: { backgroundColor: colors.butterStrong }, // legacy fallback
   selectedText: { fontWeight: '900' },
   dayNumber: { fontSize: 13, color: colors.text },
   todayButton: { marginTop: 16, alignSelf: 'center', paddingVertical: 9, paddingHorizontal: 12 },
