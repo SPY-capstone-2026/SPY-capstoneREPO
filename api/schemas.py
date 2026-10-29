@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from datetime import date, time
-from typing import Optional
+from datetime import date, datetime, time
+from typing import List, Optional
 
 
 class UserUpdateRequest(BaseModel):
@@ -41,8 +41,9 @@ class TransactionCreateRequest(BaseModel):
     amount: int
     merchant_name: str
     mydata_category: str = "직접 입력"
-    final_category: str
+    final_category: Optional[str] = None  # 비우면 거래처명으로 자동 분류
     is_user_corrected: bool = True
+    memo: Optional[str] = None
 
 
 class TransactionUpdateRequest(BaseModel):
@@ -53,6 +54,27 @@ class TransactionUpdateRequest(BaseModel):
     mydata_category: Optional[str] = None
     final_category: Optional[str] = None
     is_user_corrected: Optional[bool] = None
+    memo: Optional[str] = None  # "" 를 보내면 메모 삭제
+
+
+class CategorySuggestRequest(BaseModel):
+    merchant_names: List[str]
+
+
+class ImportRow(BaseModel):
+    import_key: str
+    occurred_at: datetime
+    merchant_name: str
+    amount: int
+    final_category: Optional[str] = None  # 비어 있으면 400 '카테고리를 선택해 주세요'
+    memo: Optional[str] = None
+    tx_type: Optional[str] = None
+
+
+class ImportConfirmRequest(BaseModel):
+    source_format: str  # 미리보기 응답의 source_format 그대로 (TOSS | GENERIC)
+    rows: List[ImportRow]
+    cancel_tx_ids: List[str] = []
 
 
 class InventoryEquipRequest(BaseModel):

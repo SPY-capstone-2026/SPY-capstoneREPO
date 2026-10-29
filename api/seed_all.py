@@ -35,6 +35,7 @@ from models import (
     GeneratedReport,      # 👈 추가
     BudgetChangeLog,       # 👈 추가
     Friendship,
+    MerchantCategoryRule,
 )
 from auth import hash_password
 
@@ -85,6 +86,7 @@ CATEGORY_SETTINGS_SEED = [
 def reset_all_tables(session: Session):
     tables_in_delete_order = [
         Friendship,          # user 를 두 번 참조 -> User 보다 먼저 삭제
+        MerchantCategoryRule,
         UserInventory,
         PointTransaction,
         DailyChallenge,

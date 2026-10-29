@@ -42,6 +42,9 @@ class UserCategorySetting(SQLModel, table=True):
 # 3. Transactions 테이블 (결제 내역)
 # ----------------------------------------
 class Transaction(SQLModel, table=True):
+    # 같은 은행 파일을 두 번 올려도 같은 거래가 두 번 들어가지 않게 (import_key 가 NULL 인 직접 입력/시드는 해당 없음)
+    __table_args__ = (UniqueConstraint("user_id", "import_key", name="uq_transaction_user_import_key"),)
+
     tx_id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     user_id: str = Field(foreign_key="user.user_id")
     tx_date: date
@@ -51,6 +54,23 @@ class Transaction(SQLModel, table=True):
     mydata_category: str
     final_category: str
     is_user_corrected: bool = Field(default=False)
+    memo: Optional[str] = Field(default=None, max_length=200)
+    # 은행 파일에서 가져온 거래의 고유 키 (토스: 거래 일시+적요+금액+거래 후 잔액의 해시). 직접 입력/시드는 NULL
+    import_key: Optional[str] = Field(default=None, index=True)
+
+
+# ----------------------------------------
+# 거래처 → 카테고리 규칙 (사용자가 고른/고친 카테고리를 기억해 다음 추천에 재사용)
+# merchant_key = 정규화한 거래처명(소문자, 공백 제거). 유저·거래처당 1행.
+# ----------------------------------------
+class MerchantCategoryRule(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("user_id", "merchant_key", name="uq_merchant_rule_user_key"),)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    merchant_key: str
+    category_name: str
+    updated_at: datetime = Field(default_factory=datetime.now)
 
 
 # ----------------------------------------

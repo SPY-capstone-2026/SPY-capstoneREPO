@@ -34,8 +34,26 @@ MANUAL_CATEGORY = "직접 입력"  # schemas.TransactionCreateRequest 의 기본
 BACKUP_DIR = "backups"
 
 
+BACKUP_COLUMNS = COLUMNS + ["memo", "import_key"]
+
+
 def _generated_filter(user_id: str):
-    return (Transaction.user_id == user_id) & (Transaction.mydata_category != MANUAL_CATEGORY)
+    # 생성된 거래 = 직접 입력도 아니고, 은행 파일에서 가져온 것(import_key 있음)도 아닌 거래
+    return (
+        (Transaction.user_id == user_id)
+        & (Transaction.mydata_category != MANUAL_CATEGORY)
+        & (Transaction.import_key.is_(None))
+    )
+
+
+def _is_generated(df: pd.DataFrame) -> pd.Series:
+    return (df["mydata_category"] != MANUAL_CATEGORY) & df["import_key"].isna()
+
+
+def _optional(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)) or str(value) == "":
+        return None
+    return str(value)
 
 
 def load_user_transactions(session: Session, user_id: str) -> pd.DataFrame:
@@ -46,8 +64,9 @@ def load_user_transactions(session: Session, user_id: str) -> pd.DataFrame:
             "tx_time": t.tx_time.strftime("%H:%M:%S"), "amount": t.amount,
             "merchant_name": t.merchant_name, "mydata_category": t.mydata_category,
             "final_category": t.final_category, "is_user_corrected": bool(t.is_user_corrected),
+            "memo": t.memo, "import_key": t.import_key,
         } for t in rows],
-        columns=COLUMNS,
+        columns=BACKUP_COLUMNS,
     )
 
 
@@ -63,6 +82,8 @@ def rows_to_transactions(df: pd.DataFrame):
             mydata_category=str(row["mydata_category"]),
             final_category=str(row["final_category"]),
             is_user_corrected=str(row["is_user_corrected"]).lower() == "true",
+            memo=_optional(row.get("memo")),
+            import_key=_optional(row.get("import_key")),
         )
 
 
@@ -76,8 +97,9 @@ def save_backup(df: pd.DataFrame, user_id: str, backup_dir: str = BACKUP_DIR) ->
 def plan_reseed(session: Session, user_id: str, start: Optional[date] = None,
                 until: Optional[datetime] = None) -> dict:
     current = load_user_transactions(session, user_id)
-    generated = current[current["mydata_category"] != MANUAL_CATEGORY]
-    manual = current[current["mydata_category"] == MANUAL_CATEGORY]
+    mask = _is_generated(current)
+    generated = current[mask]
+    manual = current[~mask]  # 직접 입력 + 은행 파일에서 가져온 거래 (둘 다 유지)
 
     until = until or kst_now_naive()
     if start is None:
@@ -112,7 +134,7 @@ def apply_reseed(session: Session, user_id: str, plan: dict, regenerate_today: b
 
 def restore_backup(session: Session, user_id: str, path: str) -> dict:
     """백업 CSV 상태로 이 유저의 거래 전체를 되돌린다 (한 트랜잭션)."""
-    df = pd.read_csv(path, dtype={"tx_id": str})
+    df = pd.read_csv(path, dtype={"tx_id": str, "import_key": str, "memo": str})
     if not df.empty and set(df["user_id"].astype(str)) != {user_id}:
         raise SystemExit(f"백업 파일의 user_id 가 {user_id} 가 아닙니다. 중단합니다.")
     session.expunge_all()
@@ -145,7 +167,7 @@ def main():
         plan = plan_reseed(session, args.user, args.start)
         print(f"대상 유저: {args.user}")
         print(f"지금 거래: 전체 {len(plan['current'])}건 = 생성 {len(plan['generated'])}건 "
-              f"+ 직접 입력 {len(plan['manual'])}건(유지)")
+              f"+ 직접 입력·가져온 거래 {len(plan['manual'])}건(유지)")
         if not plan["generated"].empty:
             print(f"  생성 거래 기간: {plan['generated']['tx_date'].min()} ~ {plan['generated']['tx_date'].max()}")
         print(f"새로 만들 거래: {len(plan['new'])}건 ({plan['start']} ~ {plan['until']:%Y-%m-%d %H:%M} KST)")
