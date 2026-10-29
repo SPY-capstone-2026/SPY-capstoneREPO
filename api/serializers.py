@@ -78,6 +78,8 @@ def serialize_transaction(transaction: Transaction):
         "mydata_category": transaction.mydata_category,
         "final_category": transaction.final_category,
         "is_user_corrected": transaction.is_user_corrected,
+        "memo": transaction.memo,
+        "is_imported": transaction.import_key is not None,
     }
 
 

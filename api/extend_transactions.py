@@ -30,6 +30,7 @@ def get_last_generated_at(session: Session, user_id: str) -> Optional[datetime]:
         select(Transaction.tx_date, Transaction.tx_time)
         .where(Transaction.user_id == user_id)
         .where(Transaction.mydata_category != MANUAL_CATEGORY)
+        .where(Transaction.import_key.is_(None))  # 은행 파일에서 가져온 거래는 기준에서 제외
         .order_by(Transaction.tx_date.desc(), Transaction.tx_time.desc())
     ).first()
     return datetime.combine(row[0], row[1]) if row else None
