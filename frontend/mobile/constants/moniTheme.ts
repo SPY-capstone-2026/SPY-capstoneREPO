@@ -1,20 +1,50 @@
+import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-export const palette = { background: '#FFFFFF', surface: '#FFFFFF', soft: '#FFF7DA', butter: '#F2C84B', ink: '#211B16', muted: '#796D5E', border: '#E9E2D6', danger: '#9C4C28' };
+
+import { DEFAULT_MONI_THEME, useMoniTheme } from '@/contexts/MoniThemeContext';
+
+/** 홈 배경은 항상 흰색. 장착 스킨 전에는 버터색만 사용합니다. */
+export const palette = {
+  background: '#FFFFFF',
+  surface: DEFAULT_MONI_THEME.surface,
+  soft: DEFAULT_MONI_THEME.soft,
+  butter: DEFAULT_MONI_THEME.accent,
+  ink: '#25282B',
+  muted: '#62666B',
+  border: 'transparent',
+  danger: DEFAULT_MONI_THEME.deep,
+};
+
+/** 기존 화면의 정적 기본 스타일. 동적 면 색은 useMoniUi()를 사용하세요. */
 export const ui = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.background },
-  scroll: { width: '100%', maxWidth: 740, alignSelf: 'center', padding: 20, paddingBottom: 115 },
-  title: { fontSize: 26, fontWeight: '800', color: palette.ink, marginBottom: 8 },
-  subtitle: { fontSize: 12, color: palette.muted, lineHeight: 19, marginBottom: 14 },
-  card: { borderRadius: 20, backgroundColor: palette.surface, borderColor: palette.border, borderWidth: 1, padding: 16, marginBottom: 13 },
+  scroll: { width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 132 },
+  title: { fontSize: 27, fontWeight: '800', color: palette.ink, lineHeight: 36, marginBottom: 7 },
+  subtitle: { fontSize: 13, color: palette.muted, lineHeight: 19, marginBottom: 16 },
+  card: { borderRadius: 22, backgroundColor: palette.surface, borderWidth: 0, borderColor: 'transparent', padding: 18, marginBottom: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  heading: { fontSize: 17, fontWeight: '800', color: palette.ink, marginBottom: 10 },
-  text: { fontSize: 13, color: palette.ink },
-  muted: { fontSize: 12, lineHeight: 18, color: palette.muted },
-  input: { backgroundColor: palette.surface, borderColor: palette.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, minHeight: 44, color: palette.ink, fontSize: 14, marginBottom: 10 },
-  button: { backgroundColor: palette.butter, minHeight: 43, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderRadius: 12 },
-  secondary: { backgroundColor: '#F4F1EB', minHeight: 43, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderRadius: 12 },
+  heading: { fontSize: 17, fontWeight: '800', color: palette.ink, lineHeight: 24, marginBottom: 9 },
+  text: { fontSize: 14, lineHeight: 21, color: palette.ink },
+  muted: { fontSize: 12, lineHeight: 19, color: palette.muted },
+  input: { backgroundColor: '#FFFFFF', borderWidth: 0, borderRadius: 12, paddingHorizontal: 13, minHeight: 46, color: palette.ink, fontSize: 14, marginBottom: 12 },
+  button: { backgroundColor: palette.butter, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 9, borderRadius: 13 },
+  secondary: { backgroundColor: palette.soft, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 9, borderRadius: 13 },
   buttonText: { fontSize: 13, fontWeight: '800', color: palette.ink },
   dangerText: { fontSize: 13, fontWeight: '700', color: palette.danger },
-  divider: { borderTopWidth: 1, borderTopColor: palette.border, marginVertical: 12 },
+  divider: { borderTopWidth: 1, borderTopColor: palette.soft, marginVertical: 12 },
 });
+
+/** 모든 새 화면의 카드·버튼·칩은 활성 스킨 하나를 기준으로 같이 갱신합니다. */
+export function useMoniUi() {
+  const { theme } = useMoniTheme();
+  return useMemo(() => ({
+    ...ui,
+    card: [ui.card, { backgroundColor: theme.surface, borderWidth: 0, borderColor: 'transparent' }],
+    input: [ui.input, { backgroundColor: theme.subtle }],
+    button: [ui.button, { backgroundColor: theme.accent }],
+    secondary: [ui.secondary, { backgroundColor: theme.soft }],
+    dangerText: [ui.dangerText, { color: theme.deep }],
+    divider: [ui.divider, { borderTopColor: theme.soft }],
+  }), [theme]);
+}

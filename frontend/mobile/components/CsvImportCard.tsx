@@ -1,144 +1,151 @@
 import { useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { FileUp, Upload, X } from 'lucide-react-native';
-import { apiRequest } from '@/services/apiClient';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Check, ChevronDown, ChevronUp, FileSpreadsheet, Upload, X } from 'lucide-react-native';
 import { useToast } from '@/contexts/ToastContext';
-import { palette, ui } from '@/constants/moniTheme';
+import { palette, useMoniUi } from '@/constants/moniTheme';
+import { useMoniTheme } from '@/contexts/MoniThemeContext';
+import { confirmTransactionImport, previewTransactionFile } from '@/services/transactionImportApi';
+import type { ImportPreview, PreviewRow } from '@/types/transactionImport';
 
-export type ImportedRow = { tx_date: string; tx_time?: string; amount: number; merchant_name: string; final_category: string; line: number };
-type InvalidRow = { line: number; reason: string };
 type Props = { categories: string[]; onImported: () => Promise<void> | void };
+const money = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}원`;
 
-type CsvTable = string[][];
-/** RFC4180-style escaped fields, embedded commas, and newlines. */
-export function readCsv(text: string): CsvTable {
-  const rows: CsvTable = []; let row: string[] = []; let cell = ''; let quoted = false;
-  const source = text.replace(/^\uFEFF/, '');
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    if (ch === '"') { if (quoted && source[i + 1] === '"') { cell += '"'; i += 1; } else { quoted = !quoted; } }
-    else if (ch === ',' && !quoted) { row.push(cell.trim()); cell = ''; }
-    else if ((ch === '\r' || ch === '\n') && !quoted) {
-      if (ch === '\r' && source[i + 1] === '\n') i += 1;
-      row.push(cell.trim()); cell = '';
-      if (row.some(item => item)) rows.push(row);
-      row = [];
-    } else { cell += ch; }
-  }
-  if (quoted) throw new Error('CSV 따옴표가 닫히지 않았어요.');
-  row.push(cell.trim()); if (row.some(item => item)) rows.push(row);
-  return rows;
-}
-function validDate(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const [y, m, d] = date.split('-').map(Number); const actual = new Date(Date.UTC(y, m - 1, d));
-  return actual.getUTCFullYear() === y && actual.getUTCMonth() === m - 1 && actual.getUTCDate() === d;
-}
-export function parseTransactionsCsv(text: string, allowedCategories: string[]) {
-  const table = readCsv(text);
-  if (table.length < 2) throw new Error('CSV에 소비 기록이 없어요.');
-  const headers = table[0].map(h => h.trim().toLowerCase());
-  const idx = (...aliases: string[]) => headers.findIndex(h => aliases.includes(h));
-  const indices = {
-    date: idx('날짜','거래일','date','tx_date'), amount: idx('금액','amount','거래금액'),
-    merchant: idx('결제처','사용처','가맹점','merchant','merchant_name'),
-    category: idx('카테고리','분류','category','final_category'),
-    time: idx('시간','time','tx_time'),
-  };
-  if (indices.date < 0 || indices.amount < 0 || indices.merchant < 0 || indices.category < 0) {
-    throw new Error('첫 행에 날짜, 금액, 결제처, 카테고리 열이 필요해요.');
-  }
-  const allowed = new Set(allowedCategories);
-  const valid: ImportedRow[] = []; const invalid: InvalidRow[] = [];
-  table.slice(1).forEach((cells, i) => {
-    const line = i + 2;
-    const tx_date = cells[indices.date] || '';
-    const rawAmount = (cells[indices.amount] || '').replace(/[₩원,\s]/g, '');
-    const amount = Number(rawAmount);
-    const merchant_name = (cells[indices.merchant] || '').trim();
-    const final_category = (cells[indices.category] || '').trim();
-    const tx_time = indices.time >= 0 ? (cells[indices.time] || '').trim() : '';
-    const reason = !validDate(tx_date) ? '날짜는 YYYY-MM-DD로 입력해 주세요.'
-      : !rawAmount || !Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount) ? '금액은 0보다 큰 정수여야 해요.'
-      : !merchant_name ? '결제처가 비어 있어요.'
-      : !allowed.has(final_category) ? `등록되지 않은 카테고리: ${final_category}`
-      : tx_time && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(tx_time) ? '시간 형식이 잘못됐어요.' : '';
-    if (reason) invalid.push({line, reason});
-    else valid.push({line, tx_date, amount, merchant_name, final_category, ...(tx_time ? {tx_time} : {})});
-  });
-  return {valid, invalid};
-}
-
+/** UI name is retained for compatibility with existing transactions.tsx imports. */
 export function CsvImportCard({ categories, onImported }: Props) {
   const { showToast } = useToast();
-  const [fileName, setFileName] = useState('');
-  const [valid, setValid] = useState<ImportedRow[]>([]);
-  const [invalid, setInvalid] = useState<InvalidRow[]>([]);
-  const [open, setOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const importLock = useRef(false);
-  const categoriesKey = categories.join('\u0000');
-  const allowed = useMemo(() => categoriesKey ? categoriesKey.split('\u0000') : [], [categoriesKey]);
+  const { theme } = useMoniTheme();
+  const themedUi = useMoniUi();
+  const [fileName,setFileName] = useState('');
+  const [preview,setPreview] = useState<ImportPreview|null>(null);
+  const [excludedOpen,setExcludedOpen] = useState(false);
+  const [categoryOpen,setCategoryOpen] = useState<string|null>(null);
+  const [loading,setLoading] = useState(false);
+  const [saving,setSaving] = useState(false);
+  const busy = useRef(false);
+  const allowed = useMemo(()=>new Set(categories),[categories.join('\u0000')]);
+  const selected = preview?.rows.filter(row=>row.selected)??[];
+  const missingCategory = selected.some(row=>!row.final_category || !allowed.has(row.final_category));
+
   const chooseFile = () => {
-    if (Platform.OS !== 'web') { showToast('CSV 등록은 현재 웹에서 사용할 수 있어요.'); return; }
-    const browser = globalThis as unknown as { document?: any; FileReader?: any };
-    if (!browser.document || !browser.FileReader) { showToast('파일 선택을 지원하지 않는 브라우저예요.'); return; }
-    const input = browser.document.createElement('input'); input.type = 'file'; input.accept = '.csv,text/csv';
-    input.onchange = () => {
-      const file = input.files?.[0]; if (!file) return;
-      if (file.size > 5 * 1024 * 1024) { showToast('CSV는 최대 5MB까지 등록할 수 있어요.'); return; }
-      const reader = new browser.FileReader!();
-      reader.onload = () => {
-        try { const result = parseTransactionsCsv(String(reader.result || ''), allowed); setValid(result.valid); setInvalid(result.invalid); setFileName(file.name); setOpen(true); }
-        catch (error) { showToast(error instanceof Error ? error.message : 'CSV를 읽지 못했어요.'); }
-      };
-      reader.onerror = () => showToast('CSV 파일 읽기에 실패했어요. UTF-8로 저장해 주세요.');
-      reader.readAsText(file, 'UTF-8');
+    if (Platform.OS!=='web') { showToast('현재 파일 등록은 웹에서 사용할 수 있습니다.'); return; }
+    if (busy.current) return;
+    const doc=(globalThis as {document?:Document}).document;
+    if(!doc){showToast('파일 선택을 지원하지 않는 환경입니다.');return;}
+    const input=doc.createElement('input');
+    input.type='file'; input.accept='.csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    input.onchange=()=>{
+      const file=input.files?.item(0);
+      if(!file)return;
+      if(file.size>15*1024*1024){showToast('파일은 최대 15MB까지 선택할 수 있습니다.');return;}
+      if(!/\.(csv|xlsx|xls)$/i.test(file.name)){showToast('CSV 또는 Excel 파일을 선택해 주세요.');return;}
+      void (async()=>{
+        try {
+          busy.current=true;setLoading(true);
+          const result=await previewTransactionFile(file);
+          // A suggestion not in the user's actual categories is intentionally not auto-selected.
+          setPreview({ ...result, rows:result.rows.map(row=>({
+            ...row,final_category:allowed.has(row.final_category)?row.final_category:'',
+          })) });
+          setFileName(file.name);
+          setExcludedOpen(false);setCategoryOpen(null);
+        } catch(error) {showToast(error instanceof Error?error.message:'파일 내용을 확인하지 못했습니다.');}
+        finally {busy.current=false;setLoading(false);}
+      })();
     };
     input.click();
   };
-  const upload = async () => {
-    if (!valid.length || importLock.current) return;
-    importLock.current = true; setImporting(true);
-    const remaining: ImportedRow[] = []; let success = 0;
+  const update = (key:string, fn:(row:PreviewRow)=>PreviewRow) => setPreview(old=>old?{
+    ...old,rows:old.rows.map(row=>row.key===key?fn(row):row),
+  }:old);
+  const confirm=async()=>{
+    if(!preview||!selected.length||missingCategory||busy.current)return;
     try {
-      for (const row of valid) {
-        try {
-          await apiRequest({
-            path: '/transactions', method: 'POST', auth: true,
-            body: {tx_date: row.tx_date, ...(row.tx_time ? {tx_time: row.tx_time} : {}), amount: row.amount,
-              merchant_name: row.merchant_name, final_category: row.final_category, is_user_corrected: true},
-          });
-          success += 1;
-        } catch { remaining.push(row); }
-      }
-      setValid(remaining);
-      if (success) await onImported();
-      if (!remaining.length) { setOpen(false); setInvalid([]); setFileName(''); }
-      showToast(`${success}건 등록 완료${remaining.length ? ` · ${remaining.length}건 실패 (재시도 가능)` : ''}`);
-    } finally { importLock.current = false; setImporting(false); }
+      busy.current=true;setSaving(true);
+      const result=await confirmTransactionImport(preview,selected);
+      setPreview(null);setFileName('');
+      try {await onImported();} catch {showToast('등록은 완료됐지만 목록 새로고침에 실패했습니다.');return;}
+      showToast(`${result.imported}건 등록 · 중복 ${result.duplicateSkipped}건 건너뜀`);
+    } catch(error) {showToast(error instanceof Error?error.message:'거래내역 등록에 실패했습니다.');}
+    finally {busy.current=false;setSaving(false);}
   };
   return <>
-    <Pressable style={[ui.card, {backgroundColor: palette.soft}]} onPress={chooseFile} accessibilityRole="button">
-      <View style={ui.row}><FileUp color={palette.ink} size={23}/><View style={{flex: 1}}>
-        <Text style={ui.heading}>CSV로 소비내역 등록</Text>
-        <Text style={ui.muted}>CSV 선택 → 데이터 확인 → 지출 기록 등록 (웹 전용)</Text>
-      </View><Upload size={20} color={palette.ink}/></View>
+    <Pressable accessibilityRole="button" disabled={loading||saving} onPress={chooseFile} style={[themedUi.card,styles.entry,{backgroundColor:theme.subtle}]}>
+      <FileSpreadsheet size={22} color={theme.deep}/>
+      <View style={{flex:1}}>
+        <Text style={[themedUi.heading,{marginBottom:3}]}>파일로 소비내역 등록</Text>
+        <Text style={themedUi.muted}>엑셀 · CSV</Text>
+      </View>
+      <Upload color={theme.deep} size={19}/>
     </Pressable>
-    <Modal transparent visible={open} animationType="fade" onRequestClose={() => !importing && setOpen(false)}>
-      <View style={{flex: 1, justifyContent: 'center', backgroundColor:'#0009', padding:16}}><View style={[ui.card,{maxWidth:600,width:'100%',alignSelf:'center',maxHeight:'80%'}]}>
-        <View style={[ui.row,{justifyContent:'space-between'}]}><Text style={ui.heading}>{fileName}</Text><Pressable disabled={importing} onPress={() => setOpen(false)}><X size={20} color={palette.ink}/></Pressable></View>
-        <Text style={ui.subtitle}>등록 가능 {valid.length}건 · 제외 {invalid.length}건. 중복 등록을 자동 차단하지 않습니다.</Text>
-        <ScrollView style={{maxHeight:330}}>
-          {valid.slice(0,30).map(row => <Text style={[ui.text,{marginVertical:5}]} key={row.line}>{row.line}행 · {row.tx_date} · {row.merchant_name} · {row.amount.toLocaleString()}원 ({row.final_category})</Text>)}
-          {valid.length > 30 && <Text style={ui.muted}>외 {valid.length - 30}건</Text>}
-          {invalid.map(row => <Text style={[ui.dangerText,{marginVertical:5}]} key={row.line}>{row.line}행 제외: {row.reason}</Text>)}
-        </ScrollView>
-        <View style={[ui.row,{justifyContent:'flex-end',marginTop:12}]}>
-          <Pressable style={ui.secondary} disabled={importing} onPress={() => setOpen(false)}><Text style={ui.buttonText}>취소</Text></Pressable>
-          <Pressable style={ui.button} disabled={!valid.length || importing} onPress={() => void upload()}><Text style={ui.buttonText}>{importing?'등록 중':`${valid.length}건 등록`}</Text></Pressable>
+    {loading&&<Text style={[themedUi.muted,{marginBottom:12}]}>파일을 분석하고 있습니다...</Text>}
+    <Modal visible={preview!==null} transparent animationType="fade" onRequestClose={()=>!saving&&setPreview(null)}>
+      <View style={styles.backdrop}>
+        <View style={styles.modal}>
+          <View style={[themedUi.row,{justifyContent:'space-between',marginBottom:5}]}>
+            <View style={{flex:1,minWidth:0}}><Text style={themedUi.heading} numberOfLines={1}>{fileName}</Text><Text style={themedUi.muted}>등록 전 내용을 확인하세요.</Text></View>
+            <Pressable disabled={saving} onPress={()=>setPreview(null)} accessibilityLabel="미리보기 닫기"><X size={21} color={palette.ink}/></Pressable>
+          </View>
+          <View style={[themedUi.row,{marginBottom:12,flexWrap:'wrap'}]}>
+            <Text style={themedUi.muted}>선택 {selected.length}건</Text>
+            <Text style={themedUi.muted}>제외 {preview?.excluded.length??0}건</Text>
+            {preview?.duplicateCount? <Text style={themedUi.muted}>중복 {preview.duplicateCount}건</Text>:null}
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingBottom:16}} showsVerticalScrollIndicator={false}>
+            {preview?.rows.length ? preview.rows.map(row=><View key={row.key} style={[styles.rowCard,{backgroundColor:row.selected?theme.soft:theme.surface}]}>
+              <View style={[themedUi.row,{alignItems:'flex-start'}]}>
+                <Pressable onPress={()=>update(row.key,r=>({...r,selected:!r.selected}))} accessibilityRole="checkbox" accessibilityState={{checked:row.selected}}
+                  style={[styles.checkbox,{backgroundColor:row.selected?theme.accent:theme.soft}]}>
+                  {row.selected&&<Check size={16} color={palette.ink} strokeWidth={3}/>}</Pressable>
+                <View style={{flex:1,minWidth:0}}>
+                  <Text style={[themedUi.text,{fontWeight:'700'}]}>{row.merchant_name || '거래처 정보 없음'}</Text>
+                  <Text style={themedUi.muted}>{row.tx_date}{row.tx_time?` · ${row.tx_time}`:''}</Text>
+                  {row.memo?<Text style={[themedUi.muted,{marginTop:4}]}>{row.memo}</Text>:null}
+                </View>
+                <Text style={[themedUi.text,{fontWeight:'800'}]}>{money(row.amount)}</Text>
+              </View>
+              <View style={{marginLeft:38,marginTop:9}}>
+                <Pressable onPress={()=>setCategoryOpen(categoryOpen===row.key?null:row.key)} style={[styles.categoryChip,{backgroundColor:row.final_category?theme.soft:theme.subtle}]}>
+                  <Text style={[themedUi.buttonText,{color:theme.deep}]}>{row.final_category||'카테고리 선택 필요'}</Text>
+                  <ChevronDown size={15} color={theme.deep}/>
+                </Pressable>
+                {categoryOpen===row.key&&<View style={[themedUi.rowWrap,{marginTop:8}]}>
+                  {categories.map(category=><Pressable key={category} onPress={()=>{update(row.key,r=>({...r,final_category:category}));setCategoryOpen(null);}}
+                    style={[styles.categoryChip,{backgroundColor:row.final_category===category?theme.accent:theme.subtle}]}>
+                    <Text style={themedUi.buttonText}>{category}</Text>
+                  </Pressable>)}
+                </View>}
+                {row.suggested_category&&<Text style={[themedUi.muted,{marginTop:6}]}>추천: {row.suggested_category}</Text>}
+              </View>
+            </View>) : <Text style={[themedUi.muted,{marginBottom:12}]}>등록 가능한 지출 내역이 없습니다.</Text>}
+            {preview?.excluded.length ? <View style={{marginTop:12}}>
+              <Pressable onPress={()=>setExcludedOpen(v=>!v)} style={[themedUi.row,{justifyContent:'space-between',backgroundColor:theme.soft,padding:12,borderRadius:13}]}>
+                <Text style={themedUi.heading}>제외된 항목 {preview.excluded.length}건</Text>
+                {excludedOpen?<ChevronUp size={18} color={palette.ink}/>:<ChevronDown size={18} color={palette.ink}/>}
+              </Pressable>
+              {excludedOpen&&preview.excluded.map(item=><View key={`${item.key}:${item.sourceIndex}`} style={{paddingVertical:9,paddingHorizontal:5}}>
+                <Text style={themedUi.text}>{item.merchant_name||`${item.sourceIndex}행`}{item.amount?` · ${money(item.amount)}`:''}</Text>
+                <Text style={[themedUi.muted,{color:theme.deep}]}>{item.reason}</Text>
+              </View>)}
+            </View>:null}
+          </ScrollView>
+          {missingCategory&&<Text style={[themedUi.dangerText,{marginBottom:8}]}>선택한 거래의 카테고리를 모두 지정해 주세요.</Text>}
+          <View style={[themedUi.row,{justifyContent:'flex-end'}]}>
+            <Pressable disabled={saving} onPress={()=>setPreview(null)} style={themedUi.secondary}><Text style={themedUi.buttonText}>닫기</Text></Pressable>
+            <Pressable disabled={!selected.length||missingCategory||saving} onPress={()=>void confirm()}
+              style={[themedUi.button,{backgroundColor:theme.accent,opacity:(!selected.length||missingCategory||saving)?0.4:1,flexShrink:1}]}>
+              <Text style={themedUi.buttonText}>{saving?'등록 중':`${selected.length}건 등록`}</Text>
+            </Pressable>
+          </View>
         </View>
-      </View></View>
+      </View>
     </Modal>
   </>;
 }
+const styles=StyleSheet.create({
+  entry:{flexDirection:'row',alignItems:'center',gap:13},
+  backdrop:{flex:1,justifyContent:'center',backgroundColor:'#0009',padding:12},
+  modal:{width:'100%',maxWidth:720,maxHeight:'94%',alignSelf:'center',backgroundColor:'#FFFFFF',borderRadius:20,padding:17},
+  rowCard:{borderRadius:15,padding:12,marginBottom:9},
+  checkbox:{height:25,width:25,borderRadius:8,justifyContent:'center',alignItems:'center',marginTop:2},
+  categoryChip:{minHeight:31,borderRadius:99,paddingHorizontal:11,paddingVertical:6,alignSelf:'flex-start',flexDirection:'row',alignItems:'center',gap:6},
+});

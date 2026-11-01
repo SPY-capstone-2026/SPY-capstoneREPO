@@ -1,39 +1,43 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { BarChart3, ClipboardCheck, Home, ReceiptText, WalletCards, UserRound, UsersRound } from 'lucide-react-native';
+import { BarChart3, ClipboardCheck, Home, ReceiptText, UserRound, UsersRound } from 'lucide-react-native';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { typography } from '@/constants/typography';
+import { useMoniTheme } from '@/contexts/MoniThemeContext';
 
 const TABS = [
   { name: 'home', label: '홈', Icon: Home },
   { name: 'challenge', label: '챌린지', Icon: ClipboardCheck },
   { name: 'report', label: '리포트', Icon: BarChart3 },
   { name: 'transactions', label: '소비', Icon: ReceiptText },
-  { name: 'budget', label: '예산', Icon: WalletCards },
   { name: 'social', label: '소셜', Icon: UsersRound },
   { name: 'mypage', label: '마이', Icon: UserRound },
 ] as const;
 
-export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function AppTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { theme, refreshTheme } = useMoniTheme();
+
   return (
     <View pointerEvents="box-none" style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      <View style={styles.bar}>
-        <ScrollView horizontal contentContainerStyle={styles.scroll} showsHorizontalScrollIndicator={false}>
+      <View style={[styles.bar, { backgroundColor: theme.surface }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           {TABS.map(({ name, label, Icon }) => {
-            const route = state.routes.find((item) => item.name === name);
+            const route = state.routes.find(item => item.name === name);
             if (!route) return null;
-            const index = state.routes.findIndex((item) => item.key === route.key);
-            const focused = state.index === index;
+            const active = state.routes[state.index]?.key === route.key;
             return (
-              <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: focused }}
-                accessibilityLabel={label} onPress={() => {
+              <Pressable key={name} accessibilityRole="tab"
+                accessibilityState={{ selected: active }} accessibilityLabel={label}
+                onPress={() => {
                   const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                  if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
-                }} onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-                style={[styles.tab, focused && styles.activeTab]}>
-                <Icon size={focused ? 18 : 21} color={focused ? '#211B16' : '#A99B8B'} strokeWidth={2.3} />
-                {focused && <Text style={styles.activeLabel} numberOfLines={1}>{label}</Text>}
+                  if (!active && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+                  void refreshTheme();
+                }}
+                style={[styles.tab, active && { backgroundColor: theme.accent }]}>
+                <Icon size={active ? 19 : 20} color={active ? '#25282B' : theme.deep} strokeWidth={2.2} />
+                {active && <Text style={styles.activeLabel}>{label}</Text>}
               </Pressable>
             );
           })}
@@ -42,11 +46,11 @@ export function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps)
     </View>
   );
 }
+
 const styles = StyleSheet.create({
-  wrapper: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, alignItems: 'center' },
-  bar: { width: '100%', maxWidth: 600, borderRadius: 30, backgroundColor: '#211B16', padding: 8, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 14, elevation: 8 },
-  scroll: { width: '100%', minHeight: 52, alignItems: 'center', justifyContent: 'space-around' },
-  tab: { minWidth: 43, minHeight: 44, paddingHorizontal: 8, borderRadius: 24, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  activeTab: { minWidth: 80, backgroundColor: '#FFFDF8' },
-  activeLabel: { color: '#211B16', fontFamily: typography.fontFamily, fontSize: 11, fontWeight: '800' },
+  wrapper: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, alignItems: 'center' },
+  bar: { width: '100%', maxWidth: 620, borderRadius: 25, padding: 7, shadowColor: '#000', shadowOpacity: 0.045, shadowRadius: 10, elevation: 2 },
+  scroll: { minHeight: 48, flexGrow: 1, alignItems: 'center', justifyContent: 'space-between', gap: 3 },
+  tab: { minWidth: 48, minHeight: 44, paddingHorizontal: 10, borderRadius: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  activeLabel: { color: '#25282B', fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '800' },
 });
