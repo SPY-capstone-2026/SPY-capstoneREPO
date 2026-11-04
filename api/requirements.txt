@@ -28,7 +28,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.47.0
 openai>=1.0
-tensorflow-cpu>=2.16,<2.20
+statsmodels==0.15.0
 tzdata
 openpyxl==3.1.5
 python-multipart==0.0.32
