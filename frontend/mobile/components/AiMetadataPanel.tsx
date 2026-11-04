@@ -229,9 +229,6 @@ export function AiMetadataPanel({ metadata }: AiMetadataPanelProps) {
         </View>
         <View style={styles.headingCopy}>
           <Text style={styles.title}>AI 소비 분석</Text>
-          <Text style={styles.subtitle}>
-            백엔드가 전달한 분석 값을 빠짐없이 확인할 수 있어요.
-          </Text>
         </View>
       </View>
 

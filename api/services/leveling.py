@@ -30,12 +30,17 @@ def calculate_level_from_xp(total_xp: int) -> int:
     return level
 
 
-def process_challenge_completion(session: Session, user: User, xp_reward: int) -> dict:
+def process_challenge_completion(session, user, xp_reward, commit: bool = True) -> dict:
     """
-    챌린지 완료 시 호출.
+    챌린지 보상(XP/레벨업/포인트/마일스톤 아이템)을 지급한다.
     XP를 적립하고, 레벨업이 발생했으면 포인트를 지급하고 로그를 남긴다.
-    반환값은 그대로 DailyChallenge.reward_snapshot에 저장해서,
-    나중에 완료 취소 시 정확히 되돌리는 데 쓴다.
+
+    commit=True  : 이 함수 안에서 커밋한다. (기존 동작)
+    commit=False : 커밋하지 않고 flush만 한다. 호출한 쪽이 커밋을 책임진다.
+                   자정 정산에서 '챌린지 상태 변경 + 보상 지급'을 한 트랜잭션으로
+                   묶기 위해 이 모드로 호출한다.
+
+    반환값은 DailyChallenge.reward_snapshot에 저장된다.
     """
     old_level = user.current_level
     user.total_xp += xp_reward
@@ -87,8 +92,13 @@ def process_challenge_completion(session: Session, user: User, xp_reward: int) -
 
     user.current_level = new_level
     session.add(user)
-    session.commit()
-    session.refresh(user)
+
+    # ▼ 여기만 바뀜: commit 여부를 호출한 쪽이 정할 수 있게 한다
+    if commit:
+        session.commit()
+        session.refresh(user)
+    else:
+        session.flush()
 
     return {
         "leveled_up": len(levels_gained) > 0,

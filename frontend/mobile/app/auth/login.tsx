@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily,
     fontSize: 14,
     fontWeight: '900',
-    color: colors.text,
+    color: colors.backgroundWhite,
   },
   signupLink: {
     minHeight: 48,

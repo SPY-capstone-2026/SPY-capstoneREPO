@@ -2,6 +2,7 @@ from datetime import date, datetime
 from typing import Optional
 from sqlmodel import Session, select
 from models import BudgetChangeLog
+from services.time_utils import kst_now_naive
 
 
 def log_budget_change(
@@ -23,6 +24,9 @@ def log_budget_change(
         category_name=category_name,
         old_limit=old_limit,
         new_limit=new_limit,
+        # 리포트 기간(주/월)이 KST 날짜 기준이라, 서버(UTC) 시계가 아니라 KST 시각으로 기록한다.
+        # (안 그러면 KST 월요일 새벽에 바꾼 예산이 '지난주 변경'으로 집계된다)
+        changed_at=kst_now_naive(),
     )
     session.add(log)
     session.commit()

@@ -1,14 +1,15 @@
 from datetime import date
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from typing import Optional
 from sqlmodel import Session
 
 from models import engine, User, UserCategorySetting
 from auth import get_current_user_id
 from schemas import CategoryUpdateRequest
-from serializers import serialize_category_setting
+from serializers import serialize_category_setting, serialize_budget_change
 from services.common_service import ensure_default_category_settings
 from services.budget_service import log_budget_change, get_budget_change_history
+from services.challenge_regeneration_service import regenerate_pending_challenges_for_category
 
 router = APIRouter()
 
@@ -34,6 +35,7 @@ def get_categories_api(user_id: str = Depends(get_current_user_id)):
 def update_category_api(
     category_id: str,
     req: CategoryUpdateRequest,
+    background_tasks: BackgroundTasks,
     user_id: str = Depends(get_current_user_id),
 ):
     with Session(engine) as session:
@@ -44,6 +46,8 @@ def update_category_api(
 
         if category.user_id != user_id:
             raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
+
+        old_budget_limit = category.budget_limit  # 증액 여부 판단용 (아래에서 값이 바뀌기 전에 보관)
 
         if req.budget_limit is not None:
             if req.budget_limit < 0:
@@ -77,10 +81,25 @@ def update_category_api(
         session.commit()
         session.refresh(category)
 
-        return {
-            "status": "success",
-            "data": serialize_category_setting(category),
-        }
+        # 예산을 '늘렸고' 챌린지 대상 카테고리라면, 오늘의 미완료 챌린지를 새 예산 기준으로 다시 만든다.
+        # (꽉 차서 나온 '무지출' 챌린지가 예산을 늘린 뒤에도 남아 있으면 말이 안 되므로)
+        # 몇 초 걸리는 AI 호출이라 응답을 먼저 돌려주고 뒤에서 처리한다.
+        budget_raised = req.budget_limit is not None and req.budget_limit > old_budget_limit
+        refresh_challenges = budget_raised and category.is_daily_challenge
+        category_name = category.category_name
+        data = serialize_category_setting(category)
+
+    if refresh_challenges:
+        background_tasks.add_task(
+            regenerate_pending_challenges_for_category, user_id, category_name
+        )
+
+    return {
+        "status": "success",
+        "data": data,
+        # True 면 잠시 뒤 오늘의 챌린지가 새 예산 기준으로 바뀐다. (프론트는 챌린지 화면에서 다시 불러오면 됨)
+        "challenge_refresh_scheduled": refresh_challenges,
+    }
 
 
 # [예산 변경 이력 조회] 월간/주간 리포트에서 "예산 변경 코멘트" 만들 때 사용
@@ -103,13 +122,5 @@ def get_budget_history_api(
         return {
             "status": "success",
             "count": len(history),
-            "data": [
-                {
-                    "category_name": log.category_name,
-                    "old_limit": log.old_limit,
-                    "new_limit": log.new_limit,
-                    "changed_at": log.changed_at.isoformat(),
-                }
-                for log in history
-            ],
+            "data": [serialize_budget_change(log) for log in history],
         }

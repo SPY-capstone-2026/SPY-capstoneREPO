@@ -90,7 +90,7 @@ export const MASCOT_ACCESSORY_PLACEMENTS: Record<
     width: 0.19,
     height: 0.09,
     offsetX: -0.04,
-    offsetY: 0.00,
+    offsetY: 0.05,
     rotate: '-18deg',
     crop: sourceCrop(136, 170, 410, 327),
   },

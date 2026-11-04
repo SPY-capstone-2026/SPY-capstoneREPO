@@ -10,6 +10,7 @@ from services.reports_service import (
     get_month_date_range,
     get_week_date_range,
     get_weekly_trend,
+    calculate_change,
     calculate_projected_amount,
     build_evaluated_categories,
     build_weekly_category_comparison,
@@ -17,7 +18,10 @@ from services.reports_service import (
     build_weekly_breakdown,
 )
 from services.report_cache_service import get_or_generate_report
-from services.challenge_stats_service import get_total_xp_earned
+from services.challenge_stats_service import get_total_xp_earned, get_category_stats
+from services.budget_service import get_budget_change_history
+from serializers import serialize_budget_change
+from moni_engine.report import generate_weekly_comment, generate_monthly_comment
 
 router = APIRouter()
 
@@ -56,12 +60,9 @@ def get_weekly_report_api(
 
             this_week_total = sum(t.amount for t in this_week_transactions)
             last_week_total = sum(t.amount for t in last_week_transactions)
-            change_amount = this_week_total - last_week_total
-            change_percent = (
-                round((change_amount / last_week_total) * 100, 1)
-                if last_week_total > 0
-                else None
-            )
+            # 지난주 대비 변화량/변화율 계산은 reports_service.calculate_change()와 동일한 로직이라
+            # 중복 구현하지 않고 그대로 재사용한다.
+            change_amount, change_percent = calculate_change(this_week_total, last_week_total)
 
             category_comparison = build_weekly_category_comparison(
                 category_settings=category_settings,
@@ -73,7 +74,23 @@ def get_weekly_report_api(
 
             xp_earned_this_week = get_total_xp_earned(session, user_id, week_start, week_end)
 
-            return {
+            # 챌린지 통계를 payload 구성 전에 먼저 계산 — 총평(LLM)용으로만 쓰지 않고
+            # weekly_summary에도 달성 개수를 노출해서 응답만 보고도 확인 가능하게 함
+            weekly_category_stats = get_category_stats(
+                session, user_id, start_date=week_start, end_date=week_end
+            )
+            challenges_total = sum(c["total_count"] for c in weekly_category_stats)
+            challenges_completed = sum(c["completed_count"] for c in weekly_category_stats)
+
+            # 이번 주에 예산을 바꾼 기록 (언제 / 어느 카테고리 / 얼마 -> 얼마)
+            budget_changes = [
+                serialize_budget_change(log)
+                for log in get_budget_change_history(
+                    session, user_id, start_date=week_start, end_date=week_end
+                )
+            ]
+
+            payload = {
                 "week_start": week_start.isoformat(),
                 "week_end": week_end.isoformat(),
                 "weekly_summary": {
@@ -83,10 +100,22 @@ def get_weekly_report_api(
                     "change_percent": change_percent,
                     "transaction_count": len(this_week_transactions),
                     "xp_earned": xp_earned_this_week,
+                    "challenges_total": challenges_total,
+                    "challenges_completed": challenges_completed,
                 },
                 "daily_trend": daily_trend,
                 "category_comparison": category_comparison,
+                "budget_changes": budget_changes,
             }
+
+            # 총평 생성 — build_report() 안에서 붙여야 캐싱될 때 comment도 같이 저장됨
+            # (안 그러면 지난주 리포트를 열 때마다 LLM을 다시 호출하게 됨)
+            challenge_stats = {"categories": weekly_category_stats}
+            comment_result = generate_weekly_comment(payload, challenge_stats)
+            payload["comment"] = comment_result["comment"]
+            payload["comment_source"] = comment_result["comment_source"]
+
+            return payload
 
         # 요청한 주가 이미 끝났으면 캐시 우선 조회, 진행 중인 주(이번 주)면 항상 라이브 계산
         report_data = get_or_generate_report(
@@ -170,7 +199,23 @@ def get_monthly_report_api(
                 period_end=last_day,
             )
 
-            return {
+            # 총평 생성 — 월간 챌린지 통계는 기간을 반드시 명시해서 호출
+            # (안 그러면 get_category_stats가 전체 기간 누적을 돌려줘서 총평이 틀어짐)
+            # payload 구성 전에 먼저 계산해서 monthly_summary에도 달성 개수 노출
+            monthly_category_stats = get_category_stats(
+                session, user_id, start_date=first_day, end_date=last_day
+            )
+            challenges_total = sum(c["total_count"] for c in monthly_category_stats)
+            challenges_completed = sum(c["completed_count"] for c in monthly_category_stats)
+
+            budget_changes = [
+                serialize_budget_change(log)
+                for log in get_budget_change_history(
+                    session, user_id, start_date=first_day, end_date=last_day
+                )
+            ]
+
+            payload = {
                 "month": first_day.strftime("%Y-%m"),
                 "is_current_month": is_current_month,
                 "monthly_summary": {
@@ -180,12 +225,24 @@ def get_monthly_report_api(
                     "budget_pressure": budget_pressure,
                     "transaction_count": len(monthly_transactions),
                     "xp_earned": xp_earned_this_month,
+                    "challenges_total": challenges_total,
+                    "challenges_completed": challenges_completed,
                 },
                 "weekly_trend": weekly_trend,
                 "weekly_breakdown": weekly_breakdown,
                 "evaluated_categories": evaluated_categories,
                 "category_overrun": category_overrun,
+                "budget_changes": budget_changes,
             }
+
+            challenge_stats = {"categories": monthly_category_stats}
+            # AI(report.py)는 dict 만 읽는다. DB 객체(BudgetChangeLog)를 그대로 넘기면 조용히 무시되므로
+            # 위에서 직렬화한 dict 목록을 넘긴다.
+            comment_result = generate_monthly_comment(payload, challenge_stats, budget_changes)
+            payload["comment"] = comment_result["comment"]
+            payload["comment_source"] = comment_result["comment_source"]
+
+            return payload
 
         # 요청한 달이 이미 끝났으면 캐시 우선 조회, 진행 중인 달(이번 달)이면 항상 라이브 계산
         report_data = get_or_generate_report(

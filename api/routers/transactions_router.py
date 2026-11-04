@@ -1,12 +1,36 @@
 from datetime import date, datetime, time
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from sqlmodel import Session, select
 
 from models import engine, User, Transaction
 from auth import get_current_user_id
-from schemas import TransactionCreateRequest, TransactionUpdateRequest
+from schemas import (
+    TransactionCreateRequest,
+    TransactionUpdateRequest,
+    CategorySuggestRequest,
+    ImportConfirmRequest,
+)
 from serializers import serialize_transaction
 from services.report_cache_service import invalidate_reports_containing_date
+from services.category_classifier import (
+    classify_merchants,
+    normalize_merchant,
+    remember_user_choice,
+    validate_user_category,
+)
+from services.transaction_import_service import parse_file, build_preview, confirm_import
+from services.time_utils import kst_now_naive
+
+MEMO_MAX_LENGTH = 200
+
+
+def _clean_memo(memo):
+    if memo is None:
+        return None
+    memo = memo.strip()
+    if len(memo) > MEMO_MAX_LENGTH:
+        raise HTTPException(status_code=400, detail=f"메모는 {MEMO_MAX_LENGTH}자까지 입력할 수 있습니다")
+    return memo or None
 
 router = APIRouter()
 
@@ -45,15 +69,30 @@ def create_transaction_api(
         if not user:
             raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다")
 
+        # 카테고리를 비워 보내면 거래처명으로 자동 분류 (내 수정 기록 → 키워드)
+        final_category = req.final_category
+        if not final_category:
+            final_category, _ = classify_merchants(session, user_id, [req.merchant_name])[req.merchant_name]
+            if not final_category:
+                raise HTTPException(
+                    status_code=400,
+                    detail="카테고리를 자동으로 정하지 못했습니다. 카테고리를 선택해 주세요",
+                )
+        else:
+            validate_user_category(session, user_id, final_category)
+            # 사용자가 직접 고른 카테고리는 다음 추천에 재사용
+            remember_user_choice(session, user_id, req.merchant_name, final_category)
+
         transaction = Transaction(
             user_id=user_id,
             tx_date=req.tx_date,
-            tx_time=req.tx_time or datetime.now().time().replace(microsecond=0),
+            tx_time=req.tx_time or kst_now_naive().time().replace(microsecond=0),
             amount=req.amount,
             merchant_name=req.merchant_name,
             mydata_category=req.mydata_category,
-            final_category=req.final_category,
-            is_user_corrected=req.is_user_corrected,
+            final_category=final_category,
+            is_user_corrected=req.is_user_corrected if req.final_category else False,
+            memo=_clean_memo(req.memo),
         )
 
         session.add(transaction)
@@ -119,11 +158,18 @@ def update_transaction_api(
         if req.mydata_category is not None:
             transaction.mydata_category = req.mydata_category
 
-        if req.final_category is not None:
+        if req.final_category is not None and req.final_category != transaction.final_category:
+            validate_user_category(session, user_id, req.final_category)
             transaction.final_category = req.final_category
+            transaction.is_user_corrected = True
+            # 고친 값을 기억해서 같은 거래처의 다음 추천에 쓴다
+            remember_user_choice(session, user_id, transaction.merchant_name, req.final_category)
 
         if req.is_user_corrected is not None:
             transaction.is_user_corrected = req.is_user_corrected
+
+        if req.memo is not None:
+            transaction.memo = _clean_memo(req.memo)
 
         session.add(transaction)
         session.commit()
@@ -166,3 +212,58 @@ def delete_transaction_api(
             "status": "success",
             "deleted_id": tx_id,
         }
+
+
+# [카테고리 추천] 거래처 이름으로 추천 카테고리 (직접 입력 화면, 가져오기 미리보기에서 사용)
+@router.post("/transactions/classify")
+def classify_transactions_api(
+    req: CategorySuggestRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    names = [n for n in dict.fromkeys(req.merchant_names) if n and n.strip()]
+    if len(names) > 500:
+        raise HTTPException(status_code=400, detail="한 번에 500개까지 추천받을 수 있습니다")
+
+    with Session(engine) as session:
+        result = classify_merchants(session, user_id, names)
+        return {
+            "status": "success",
+            "data": [
+                {
+                    "merchant_name": name,
+                    "normalized_name": normalize_merchant(name),
+                    "suggested_category": result[name][0],
+                    "source": result[name][1],
+                }
+                for name in names
+            ],
+        }
+
+
+# [가져오기 1] 거래내역 파일 미리보기 (.xlsx/.csv, 토스뱅크 형식 또는 날짜·금액·결제처 표) — DB 변경 없음
+@router.post("/transactions/import/preview")
+async def preview_import_api(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+):
+    content = await file.read()
+    source_format, rows = parse_file(content, file.filename or "")
+    with Session(engine) as session:
+        return {"status": "success", "data": build_preview(session, user_id, source_format, rows)}
+
+
+# [가져오기 2] 미리보기에서 확정한 행 등록 (한 트랜잭션, 이미 있는 거래는 건너뜀)
+@router.post("/transactions/import/confirm")
+def confirm_import_api(
+    req: ImportConfirmRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    with Session(engine) as session:
+        result = confirm_import(
+            session,
+            user_id,
+            req.source_format,
+            [row.model_dump() for row in req.rows],
+            req.cancel_tx_ids,
+        )
+        return {"status": "success", "data": result}

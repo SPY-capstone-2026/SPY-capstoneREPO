@@ -2,6 +2,8 @@ from typing import Optional, Dict, Any
 from sqlalchemy import Column, JSON, UniqueConstraint
 from sqlmodel import Field, SQLModel, create_engine
 from datetime import date, time, datetime
+from dotenv import load_dotenv
+import os
 import uuid
 
 
@@ -19,6 +21,8 @@ class User(SQLModel, table=True):
     total_xp: int = Field(default=0)
     current_level: int = Field(default=1)
     current_points: int = Field(default=0)  # 👈 추가된 필드
+    # 소셜: 친구 검색·공개 프로필에 쓰는 표시 이름. 기존 유저는 NULL(설정 전엔 검색 안 됨)
+    nickname: Optional[str] = Field(default=None, unique=True, index=True)
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -38,6 +42,9 @@ class UserCategorySetting(SQLModel, table=True):
 # 3. Transactions 테이블 (결제 내역)
 # ----------------------------------------
 class Transaction(SQLModel, table=True):
+    # 같은 은행 파일을 두 번 올려도 같은 거래가 두 번 들어가지 않게 (import_key 가 NULL 인 직접 입력/시드는 해당 없음)
+    __table_args__ = (UniqueConstraint("user_id", "import_key", name="uq_transaction_user_import_key"),)
+
     tx_id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     user_id: str = Field(foreign_key="user.user_id")
     tx_date: date
@@ -47,6 +54,23 @@ class Transaction(SQLModel, table=True):
     mydata_category: str
     final_category: str
     is_user_corrected: bool = Field(default=False)
+    memo: Optional[str] = Field(default=None, max_length=200)
+    # 은행 파일에서 가져온 거래의 고유 키 (토스: 거래 일시+적요+금액+거래 후 잔액의 해시). 직접 입력/시드는 NULL
+    import_key: Optional[str] = Field(default=None, index=True)
+
+
+# ----------------------------------------
+# 거래처 → 카테고리 규칙 (사용자가 고른/고친 카테고리를 기억해 다음 추천에 재사용)
+# merchant_key = 정규화한 거래처명(소문자, 공백 제거). 유저·거래처당 1행.
+# ----------------------------------------
+class MerchantCategoryRule(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("user_id", "merchant_key", name="uq_merchant_rule_user_key"),)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    user_id: str = Field(foreign_key="user.user_id", index=True)
+    merchant_key: str
+    category_name: str
+    updated_at: datetime = Field(default_factory=datetime.now)
 
 
 # ----------------------------------------
@@ -82,6 +106,7 @@ class DailyChallenge(SQLModel, table=True):
     )
 
     completed_at: Optional[datetime] = Field(default=None)
+    verification_result: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 # ----------------------------------------
@@ -144,9 +169,6 @@ class UserInventory(SQLModel, table=True):
 # ----------------------------------------
 # 데이터베이스 연결 엔진 설정
 # ----------------------------------------
-from dotenv import load_dotenv
-import os
-
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./moni.db")
@@ -177,6 +199,24 @@ class BudgetChangeLog(SQLModel, table=True):
     old_limit: int
     new_limit: int
     changed_at: datetime = Field(default_factory=datetime.now, index=True)
+
+
+# ----------------------------------------
+# 친구 관계 (요청 1건 = 행 1개, 수락되면 status 만 ACCEPTED 로 바뀐다)
+# 거절/취소/친구 삭제는 행을 지운다.
+# pair_key = 두 user_id 를 정렬해 '|'로 이은 값. 방향과 무관하게 두 사람 사이에 행이 하나만
+# 존재하도록 DB가 보장한다 (A→B, B→A 동시 요청 경쟁도 여기서 막힘).
+# ----------------------------------------
+class Friendship(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("pair_key", name="uq_friendship_pair_key"),)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    requester_id: str = Field(foreign_key="user.user_id", index=True)
+    addressee_id: str = Field(foreign_key="user.user_id", index=True)
+    pair_key: str
+    status: str = Field(default="PENDING")  # PENDING | ACCEPTED
+    created_at: datetime = Field(default_factory=datetime.now)
+    responded_at: Optional[datetime] = None
 
 
 def create_db_and_tables():

@@ -22,7 +22,6 @@ import {
   SHOP_CATEGORY_LABELS,
   SHOP_CATEGORY_ORDER,
   getShopItemEffect,
-  isVisibleShopItemName,
 } from '@/services/shopCatalog';
 import {
   getInventoryFromApi,
@@ -37,31 +36,23 @@ export default function InventoryScreen() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const availableInventory = useMemo(
-    () =>
-      inventory.filter((entry) =>
-        isVisibleShopItemName(entry.item?.name)
-      ),
-    [inventory]
-  );
-
   const categories = useMemo(
     () =>
       SHOP_CATEGORY_ORDER.filter(
         (category) =>
           category === 'ALL' ||
-          availableInventory.some(
+          inventory.some(
             (entry) => entry.item?.category === category
           )
       ),
-    [availableInventory]
+    [inventory]
   );
 
   const visibleInventory = useMemo(() => {
     const filtered =
       selectedCategory === 'ALL'
-        ? availableInventory
-        : availableInventory.filter(
+        ? inventory
+        : inventory.filter(
             (entry) => entry.item?.category === selectedCategory
           );
 
@@ -72,12 +63,11 @@ export default function InventoryScreen() {
 
       return (b.acquired_at ?? '').localeCompare(a.acquired_at ?? '');
     });
-  }, [availableInventory, selectedCategory]);
+  }, [inventory, selectedCategory]);
 
   const equippedCount = useMemo(
-    () =>
-      availableInventory.filter((entry) => entry.is_equipped).length,
-    [availableInventory]
+    () => inventory.filter((entry) => entry.is_equipped).length,
+    [inventory]
   );
 
   const loadInventory = useCallback(async () => {
@@ -357,7 +347,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 15,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
@@ -381,7 +371,7 @@ const styles = StyleSheet.create({
   shopShortcut: {
     minHeight: 40,
     borderRadius: 13,
-    backgroundColor: colors.butterPale,
+    backgroundColor: colors.popYellow,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -396,7 +386,7 @@ const styles = StyleSheet.create({
   summaryCard: {
     minHeight: 70,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 12,
@@ -408,7 +398,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: colors.butterPale,
+    backgroundColor: colors.popYellow,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -435,7 +425,7 @@ const styles = StyleSheet.create({
   categoryChip: {
     height: 35,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 12,
@@ -443,7 +433,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   categoryChipSelected: {
-    backgroundColor: colors.butterPale,
+    backgroundColor: colors.popYellow,
     borderColor: colors.butterSoft,
   },
   categoryText: {
@@ -459,7 +449,7 @@ const styles = StyleSheet.create({
   ruleCard: {
     borderRadius: 15,
     backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.borderSoft,
     padding: 11,
     marginBottom: 10,
@@ -489,7 +479,7 @@ const styles = StyleSheet.create({
     maxWidth: 270,
     borderRadius: 19,
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     padding: 11,
   },
@@ -574,7 +564,7 @@ const styles = StyleSheet.create({
   emptyCard: {
     minHeight: 220,
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
