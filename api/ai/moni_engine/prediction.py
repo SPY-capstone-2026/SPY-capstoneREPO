@@ -45,6 +45,17 @@ MIN_NONZERO_RATIO_FOR_LSTM = 0.2    # 0.15 → 0.2
 MIN_TX_COUNT_FOR_LSTM = 50          # 신규: 총거래횟수 OR 조건
 
 
+# ARIMA 차수. (p, d, q) = (자기회귀, 차분, 이동평균)
+ARIMA_ORDER = (7, 0, 1)
+ARIMA_FALLBACK_ORDER = (1, 0, 0)    # 적합 실패 시 단순 차수로 재시도
+
+# 예측 상한 가드 — 평균 성능 개선용이 아니라 '재앙 방지' 보험.
+ARIMA_GUARD_MULTIPLE = 20.0
+
+MIN_POINTS_FOR_ARIMA = 40           # 그 미만이면 단순평균
+
+
+
 def get_current_month_window(target_date) -> Tuple[date, date]:
     """
     target_date가 속한 캘린더 월의 (month_start, month_end)을 반환.
@@ -62,8 +73,9 @@ def get_current_month_window(target_date) -> Tuple[date, date]:
     month_end = next_month - timedelta(days=1)
     return month_start, month_end
 
+"""
 def _predict_with_lstm(daily_df: pd.DataFrame, periods: int) -> dict:
-    """LSTM으로 향후 periods일 예측. 매번 새로 학습."""
+    LSTM으로 향후 periods일 예측. 매번 새로 학습.
     import os
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     import tensorflow as tf
@@ -109,6 +121,66 @@ def _predict_with_lstm(daily_df: pd.DataFrame, periods: int) -> dict:
         "forecast_lower": float(preds.sum() * 0.8),   # LSTM은 구간추정이 없어 근사
         "forecast_upper": float(preds.sum() * 1.2),
         "predicted_today": float(preds[0]),           # 챌린지 한도용 (신규)
+    }
+"""
+
+def _predict_with_arima(daily_df: pd.DataFrame, periods: int) -> dict:
+    """
+    ARIMA로 향후 periods일 예측.
+
+    LSTM 대비 차이
+    --------------
+    - 결정적이다. 시드가 필요 없고 같은 입력이면 항상 같은 결과.
+    - 학습이 약 0.2초 (LSTM 약 6초).
+    - forecast_lower/upper가 ±20% 임의 근사가 아니라 모델이 낸 실제 구간.
+    """
+    from statsmodels.tsa.arima.model import ARIMA
+
+    y = daily_df["y"].values.astype(float)
+    if len(y) < MIN_POINTS_FOR_ARIMA:
+        return _predict_with_simple_average(daily_df, periods)
+
+    # 희소한 시계열에서는 수렴·초기값 경고가 정상적으로 발생한다.
+    # 수렴에 실패해도 단순 차수로 재시도하므로 결과에는 영향이 없다.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            fit = ARIMA(y, order=ARIMA_ORDER).fit()
+        except Exception:
+            try:
+                fit = ARIMA(y, order=ARIMA_FALLBACK_ORDER).fit()
+            except Exception:
+                return _predict_with_simple_average(daily_df, periods)
+
+        fc = fit.get_forecast(steps=periods)
+        mean = np.asarray(fc.predicted_mean, dtype=float)
+        preds = np.clip(mean, 0, None)
+        ci = np.asarray(fc.conf_int(alpha=0.2), dtype=float)   # 80% 구간
+
+    total = float(preds.sum())
+
+    # ---- 상한 가드 ----
+    # 최근 30일 평균으로 본 '그럴듯한 상한'을 넘으면 믿지 않는다.
+    # 최근 30일 평균으로 본 '그럴듯한 상한'을 넘으면 믿지 않는다.
+    # 과대예측만 막는다. 과소예측은 이 방식으로 걸러낼 수 없다.
+    recent = float(daily_df["y"].tail(min(30, len(daily_df))).mean())
+    cap = recent * periods * ARIMA_GUARD_MULTIPLE
+    if not np.isfinite(total) or total > cap:
+        return _predict_with_simple_average(daily_df, periods)
+
+    # ---- 신뢰구간 ----
+    # 구간은 '합계' 기준으로 계산한다. 하루치 하한은 음수가 나오는 게
+    # 정상이라(지출은 0 이상) 날마다 0으로 자르고 더하면 하한이 전부
+    # 0으로 뭉개진다. 날짜별 오차를 독립으로 보고 분산을 합친다.
+    z = 1.2816                                   # 80% 양측
+    sd_daily = (ci[:, 1] - mean) / z
+    sd_total = float(np.sqrt(np.sum(sd_daily ** 2)))
+
+    return {
+        "predicted_remaining_spend": total,
+        "forecast_lower": max(0.0, total - z * sd_total),
+        "forecast_upper": total + z * sd_total,
+        "predicted_today": float(preds[0]),
     }
 
 
@@ -157,6 +229,7 @@ def _predict_with_simple_average(daily_df: pd.DataFrame, periods: int) -> dict:
             "predicted_remaining_spend": 0.0,
             "forecast_lower": 0.0,
             "forecast_upper": 0.0,
+            "predicted_today": 0.0
         }
 
     recent_window = min(30, len(daily_df))
@@ -171,6 +244,7 @@ def _predict_with_simple_average(daily_df: pd.DataFrame, periods: int) -> dict:
         "predicted_remaining_spend": predicted,
         "forecast_lower": lower,
         "forecast_upper": upper,
+        "predicted_today": daily_avg,
     }
 
 
@@ -238,8 +312,8 @@ def predict_monthly_spend(
            or tx_count >= MIN_TX_COUNT_FOR_LSTM)   # OR 조건 추가
       and days_remaining > 0):
         try:
-            forecast = _predict_with_lstm(daily_df, days_remaining)
-            model_used = "lstm"
+            forecast = _predict_with_arima(daily_df, days_remaining)
+            model_used = "arima"
         except Exception:
             forecast = _predict_with_simple_average(daily_df, days_remaining)
             model_used = "simple_average"
