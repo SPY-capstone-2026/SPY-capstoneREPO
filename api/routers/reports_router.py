@@ -16,14 +16,21 @@ from services.reports_service import (
     build_weekly_category_comparison,
     build_category_overrun_info,
     build_weekly_breakdown,
+    shift_month,
+    get_category_monthly_totals,
+    call_with_supported_kwargs,
 )
 from services.report_cache_service import get_or_generate_report
 from services.challenge_stats_service import get_total_xp_earned, get_category_stats
 from services.budget_service import get_budget_change_history
 from serializers import serialize_budget_change
 from moni_engine.report import generate_weekly_comment, generate_monthly_comment
+from services.time_utils import kst_today
 
 router = APIRouter()
+
+CATEGORY_HISTORY_MONTHS = 6
+CATEGORY_MONTHLY_MAX_MONTHS = 12
 
 
 @router.get("/reports/weekly")
@@ -238,7 +245,19 @@ def get_monthly_report_api(
             challenge_stats = {"categories": monthly_category_stats}
             # AI(report.py)는 dict 만 읽는다. DB 객체(BudgetChangeLog)를 그대로 넘기면 조용히 무시되므로
             # 위에서 직렬화한 dict 목록을 넘긴다.
-            comment_result = generate_monthly_comment(payload, challenge_stats, budget_changes)
+            # 최근 6개월(이번 리포트 달 포함) 카테고리별 월 합계: 예측 없이 쿼리 한 번으로 집계
+            category_history = get_category_monthly_totals(
+                session, user_id, shift_month(first_day, -(CATEGORY_HISTORY_MONTHS - 1)), last_day
+            )
+            # AI 쪽 함수가 category_history / category_settings 를 받을 때만 넘긴다 (아직 없으면 기존처럼 호출)
+            comment_result = call_with_supported_kwargs(
+                generate_monthly_comment,
+                payload,
+                challenge_stats,
+                budget_changes,
+                category_history=category_history,
+                category_settings=evaluated_categories,
+            )
             payload["comment"] = comment_result["comment"]
             payload["comment_source"] = comment_result["comment_source"]
 
@@ -258,3 +277,41 @@ def get_monthly_report_api(
             "status": "success",
             "data": report_data,
         }
+
+
+# [리포트] 월 × 카테고리 지출 합계를 여러 달 한 번에 (예측·총평 없음, 쿼리 한 번)
+# 기본: target_date 가 속한 달까지 최근 6개월
+@router.get("/reports/category-monthly")
+def get_category_monthly_api(
+    months: int = CATEGORY_HISTORY_MONTHS,
+    target_date: Optional[date] = None,
+    user_id: str = Depends(get_current_user_id),
+):
+    if not 1 <= months <= CATEGORY_MONTHLY_MAX_MONTHS:
+        raise HTTPException(status_code=400, detail=f"months 는 1~{CATEGORY_MONTHLY_MAX_MONTHS} 사이입니다")
+
+    today = kst_today()
+    ref_date = target_date or today
+    first_day, last_day = get_month_date_range(ref_date)
+    if first_day > today:
+        raise HTTPException(status_code=400, detail="미래 월은 조회할 수 없습니다")
+
+    start = shift_month(first_day, -(months - 1))
+    month_labels = [shift_month(start, i).strftime("%Y-%m") for i in range(months)]
+
+    with Session(engine) as session:
+        rows = get_category_monthly_totals(session, user_id, start, last_day)
+
+    totals = {label: 0 for label in month_labels}
+    for row in rows:
+        totals[row["year_month"]] += row["total_spent"]
+
+    return {
+        "status": "success",
+        "data": {
+            "months": month_labels,
+            "categories": sorted({row["category_name"] for row in rows}),
+            "monthly_totals": [{"year_month": m, "total_spent": totals[m]} for m in month_labels],
+            "rows": rows,
+        },
+    }
