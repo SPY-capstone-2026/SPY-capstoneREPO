@@ -1,31 +1,35 @@
 # Moni Frontend
 
-Moni 모바일 프론트엔드는 사용자의 지출 기록, 예산 상태, 월간 리포트, 오늘의 챌린지를 확인하고 조작할 수 있는 React Native + Expo 기반 앱입니다.
+Moni 프론트엔드는 소비 기록·예산·챌린지·리포트·캐릭터·친구 기능을 제공하는 React Native + Expo 앱입니다. 실제 API를 사용하는 화면과 아직 계약을 맞춰야 하는 화면을 구분하여 설명합니다.
 
-현재 개발 및 확인은 **Expo Web 기준**으로 진행합니다.
+현재 개발 및 확인은 **Expo Web 기준**이며 작업 브랜치는 기존 `feature/frontend`를 사용합니다.
 
 ---
 
 ## 기술 스택
 
-| 영역        | 기술                      |
-| --------- | ----------------------- |
-| Framework | React Native            |
-| Runtime   | Expo                    |
-| Language  | TypeScript              |
-| Routing   | Expo Router             |
-| Styling   | React Native StyleSheet |
-| Icons     | lucide-react-native     |
-| API       | FastAPI 백엔드 연동          |
-| 실행 기준     | Expo Web                |
+| 영역 | 기술 |
+|---|---|
+| Framework | React Native 0.81.5 / React 19.1.0 |
+| Runtime | Expo 54 |
+| Language | TypeScript 5.9 계열, strict 설정 |
+| Routing | Expo Router 6 |
+| Styling | React Native StyleSheet / 공통 테마 Context |
+| Icons | lucide-react-native |
+| API | FastAPI / JSON / multipart 파일 요청 |
+| 실행 기준 | Expo Web |
+
+버전은 저장소 `package.json`의 선언 기준입니다. 설치된 정확한 버전은 lockfile과 로컬 환경으로 확인합니다.
 
 ---
 
 ## 실행 기준
 
-Expo Go에서는 환경에 따라 로딩 문제가 발생할 수 있어, 현재 프론트 개발과 확인은 Expo Web으로 진행합니다.
+Expo Go 초기 로딩 문제를 고려해 개발 및 확인은 기존 Expo Web 실행 방식을 유지합니다.
 
-```bash
+```powershell
+cd C:\Users\espar\SPY-capstoneREPO\frontend\mobile
+npx tsc --noEmit
 npx expo start --web --clear
 ```
 
@@ -35,56 +39,57 @@ npx expo start --web --clear
 
 ### 1. 프론트 폴더로 이동
 
-```bash
-cd frontend/mobile
+```powershell
+cd C:\Users\espar\SPY-capstoneREPO\frontend\mobile
 ```
 
 ### 2. 패키지 설치
 
-```bash
-npm install
+의존성이 없는 새 환경이나 lockfile 변경 시에만 설치합니다.
+
+```powershell
+npm ci
 ```
 
 ### 3. 환경 변수 설정
 
-`frontend/mobile/.env.local` 파일을 생성하고 API Base URL을 설정합니다.
-
-로컬 백엔드 사용 시:
+`EXPO_PUBLIC_API_BASE_URL`이 설정되어 있으면 `services/apiConfig.ts`의 localhost 기본값보다 우선합니다. `.env.local`의 다른 항목은 보존합니다.
 
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-Railway 배포 서버 사용 시:
+저장소의 배포 설정 주소:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=https://spy-capstonerepo-production.up.railway.app
+EXPO_PUBLIC_API_BASE_URL=https://spy-capstonerepo.onrender.com
 ```
 
 ### 4. 실행
 
-```bash
+```powershell
+npx tsc --noEmit
 npx expo start --web --clear
 ```
 
-웹 브라우저에서 Expo Web 화면이 열리면 정상입니다.
+일반적인 웹 주소는 `http://localhost:8081`입니다. 다른 포트로 실행됐다면 서버 허용 Origin과 일치하는지 확인합니다.
 
 ---
 
 ## 백엔드 실행 필요
 
-프론트는 실제 API와 연결되어 있으므로, 로컬 백엔드를 사용할 경우 백엔드 서버가 먼저 실행되어 있어야 합니다.
+별도 터미널에서 기존 방식으로 실행합니다.
 
-```bash
-cd ../../api
-uvicorn main:app --reload
+```powershell
+cd C:\Users\espar\SPY-capstoneREPO\api
+python -m uvicorn main:app --reload
 ```
-
-백엔드 Swagger 문서는 아래에서 확인할 수 있습니다.
 
 ```text
 http://localhost:8000/docs
 ```
+
+현재 DB에 필요한 컬럼이 없으면 서버가 켜져 있어도 `/signup`, `/login`, `/me` 등이 500으로 실패할 수 있습니다. 프론트 패치에서 서버 코드나 DB를 임의로 변경하지 않습니다.
 
 ---
 
@@ -92,108 +97,120 @@ http://localhost:8000/docs
 
 ### 인증 화면
 
-* 로그인
-* 회원가입
-* 회원가입 시 수입 유형, 수입일, 소비 성향 입력
+* JSON 기반 로그인·회원가입과 토큰 저장
+* 회원가입 시 수입 유형·수입일·소비 성향 입력
+* 현재 회원가입 UI에는 닉네임 입력이 없음; 마이페이지에서 설정
 
 ### 홈
 
-* 이번 달 현재 지출
-* 월말 예상 지출
-* 예산 대비 상태
-* 오늘의 챌린지 요약
-* 지출 데이터가 없을 때 안내 문구 표시
+* 이번 달 현재 지출·리포트 전망·예산 상태
+* 오늘의 챌린지 요약·레벨·포인트
+* 장착 아이템을 반영한 캐릭터 방 및 주요 기능 이동
+* 리포트 전망은 현재 서버의 선형 지출 속도 계산이며 ARIMA 결과와 구분
 
 ### 소비
 
-* 지출 추가
-* 지출 수정
-* 지출 삭제
-* 지출 날짜 직접 지정
-* 최근 지출 목록 표시
-* 카테고리별 예산 상태 표시
-* 카테고리별 월 예산 수정
-* 알림 기준 수정
-* 오늘의 미션 후보 포함 여부 수정
+* 날짜 선택·거래처·금액·카테고리·메모 입력
+* 지출 추가·수정·삭제와 자동 분류 요청
+* 새 지출 영역 아래 파일로 소비내역 등록 UI
+* 파일 미리보기의 행 선택·카테고리 지정·제외 항목 접기
+* 같은 화면의 항목별 예산: 월 예산·알림 기준·챌린지 대상 설정
+* 별도 예산 탭은 노출하지 않음
 
 ### 챌린지
 
-* 오늘의 챌린지 조회
-* 오늘의 챌린지 생성
-* 챌린지 완료
-* 챌린지 완료 취소
-* XP 및 레벨 반영
+* 오늘의 챌린지 자동 조회 및 빈 목록일 때 생성 요청
+* 유형·난이도·목표·예상 XP와 완료 대기/확정 상태 표시
+* 완료 표시 및 당일 표시 취소; 즉시 XP 지급 안내 없음
+* 캐릭터와 진행도 영역 분리, 좁은 화면에서 세로 배치
+* 현재 예산 안내는 경고 카드와 소비 화면 이동으로 구현됨; 모든 초과 상황에서 목록을 대체하는 명세와 동일하다고 단정하지 않음
 
 ### 리포트
 
-* 이번 달 현재 지출
-* 월말 예상 지출
-* 예산 압박도
-* 요일별 소비 리듬
-* 카테고리별 예산 상태
-* 지출 데이터가 없을 때 빈 상태 안내 표시
+* 주간·월간 선택과 기간 이동
+* 총지출·카테고리 비교·지출 추이·예산 상태
+* 챌린지 성과·예산 변경·서버 총평
+* 빈 데이터·부분 조회 실패 표시
 
 ### 마이페이지
 
-* 사용자 이메일 표시
-* 수입 유형 표시 및 수정
-* 수입일 표시 및 수정
-* 소비 성향 표시 및 수정
-* XP 및 레벨 표시
+* 닉네임·이메일·수입 유형·수입일·소비 성향 수정
+* 누적 XP·레벨·포인트 표시
+* 알림 선호 토글과 로그아웃
+* 선호 저장은 실제 푸시 알림 전송 구현을 뜻하지 않음
+
+### 소셜
+
+* 본인 닉네임·레벨·캐릭터 방 요약
+* 닉네임 검색, 친구 요청·수락·거절·취소·삭제
+* 친구 프로필·캐릭터·장착 아이템·가구와 방 조회
+* 닉네임 변경은 내 정보 수정으로 이동; 소셜에서 직접 수정하지 않음
+* 서버 친구 랭킹 API는 있으나 현재 화면의 랭킹 연결은 미구현
+
+### 캐릭터·상점·소지품
+
+* 캐릭터 방과 클릭 반응
+* 아이템 목록·포인트 구매·보유 목록·장착/해제
+* 캐릭터 컬러·액세서리·벽지·바닥·가구·소품 표시
+* 상점은 독립 하단 탭이 아니라 화면 내 경로로 진입
 
 ---
 
 ## 현재 API 연동 상태
 
-현재 프론트는 주요 화면에서 실제 백엔드 API를 사용합니다.
+실제 호출 코드가 있다는 것과 최신 서버 계약에 맞는 것은 별개입니다.
 
 ### 인증 / 사용자
 
-* `POST /signup`
-* `POST /login`
-* `GET /me`
-* `PATCH /me`
+`POST /signup`, `POST /login`, `GET /me`, `PATCH /me`를 사용합니다. 닉네임은 `/me` 수정 요청으로 저장합니다.
 
 ### 지출
 
-* `GET /transactions`
-* `POST /transactions`
-* `PATCH /transactions/{tx_id}`
-* `DELETE /transactions/{tx_id}`
+CRUD 외에 `/transactions/import/preview`, `/transactions/import/confirm` 호출과 `memo` 전송 코드가 있습니다. 서버 분류는 `final_category`를 생략한 등록에서 사용됩니다. 별도 사전 분류 API는 `/transactions/classify`입니다.
+
+**현재 가져오기 계약 보완 사항**
+
+| 항목 | 서버 | 프론트 보완 내용 |
+|---|---|---|
+| 형식 | `source_format` | 확정 요청에 전달 |
+| 날짜 | `occurred_at` | 미리보기 표시용 날짜·시간으로 변환 |
+| 제외 여부 | `kind`, `importable`, `include`, 환불 상태 | 정확한 체크박스 기본값과 제외 이유 |
+| 결과 | `inserted`, `skipped_duplicate`, `cancelled` | 토스트·후속 새로고침 결과 매핑 |
+| 파일 제한 | CSV/XLSX, 5 MiB | 현재 XLS/15 MiB 허용 UI 수정 |
 
 ### 카테고리 / 예산
 
-* `GET /categories`
-* `PATCH /categories/{category_id}`
+`GET /categories`, `PATCH /categories/{category_id}`, 리포트의 `/categories/budget-history`를 사용합니다. 서버 알림 기준은 **1~100%**이므로 프론트의 0% 허용 검사는 보완해야 합니다.
 
 ### 리포트
 
-* `GET /reports/monthly`
+`GET /reports/weekly`, `GET /reports/monthly`, 챌린지 통계·예산 이력 응답을 사용합니다. 통계 수치나 AI 총평을 클라이언트가 별도로 확정하지 않습니다.
 
 ### 챌린지
 
-* `GET /challenges/today`
-* `POST /challenges/generate`
-* `PATCH /challenges/{challenge_id}/status`
+`GET /challenges/today`, `POST /challenges/generate`, `PATCH /challenges/{challenge_id}/status`를 사용합니다.
 
-상세 API 명세는 루트 문서의 `docs/api.md`를 참고합니다.
+정산 팝업 컴포넌트는 현재 `/challenges/settlements?days=14`를 호출하지만 해당 서버 경로는 없습니다. `/challenges/history`의 날짜별 `summary`, `challenges`, `reward_snapshot`을 변환하는 연결 작업이 필요합니다. 팝업 UI가 있다는 이유로 정산 결과 표시가 완료됐다고 기록하지 않습니다.
+
+### 소셜 / 상점
+
+친구 검색·프로필·요청·목록·삭제와 상점·구매·인벤토리·장착 API를 사용합니다. 공개 프로필은 금융 내역을 포함하지 않습니다.
+
+상세 계약은 [docs/api.md](../../docs/api.md)를 기준으로 합니다.
 
 ---
 
 ## AI / 챌린지 연결 상태
 
-챌린지 생성은 백엔드의 `POST /challenges/generate`를 통해 호출됩니다.
+프론트는 예측 모델을 직접 실행하지 않습니다. 서버의 `get_today_challenges()` 결과를 사용합니다.
 
-현재 확인된 상태:
+* 메인 예측 경로는 statsmodels ARIMA와 평균 기반 대체 예측입니다.
+* 서버가 한도·유형·난이도·XP를 계산하고 LLM은 문구만 만듭니다.
+* 데이터가 없으면 서버 기본 챌린지가 반환될 수 있습니다.
+* 생성 상태는 PENDING, 완료 표시 후 VERIFYING이며 보상은 검증에서 처리됩니다.
+* 안내의 00:05는 예약 작업 기준입니다. 실제 서버는 날짜 변경 이후 접속 시 보정 정산도 수행합니다.
 
-* 인증 토큰 기반 호출 성공
-* 챌린지 생성 성공
-* 응답에 `ai_metadata` 포함
-* 테스트 결과 `model_version: fallback-v1` 확인
-
-`fallback-v1`은 소비 데이터가 부족하거나 AI 추천 결과가 비어 있을 때 기본 챌린지를 생성하는 fallback 흐름입니다.
-
-프론트에서는 fallback 여부를 개발자용 문구로 노출하지 않고, 사용자에게 자연스러운 챌린지 형태로 표시합니다.
+이번 문서 갱신에서는 토큰 발급·생성·배포 테스트를 실제로 수행하지 않았습니다.
 
 ---
 
@@ -203,87 +220,62 @@ http://localhost:8000/docs
 frontend/mobile/
 ├─ app/
 │  ├─ (tabs)/
-│  │  ├─ index.tsx          # 홈
-│  │  ├─ challenge.tsx      # 챌린지
-│  │  ├─ report.tsx         # 리포트
-│  │  ├─ transactions.tsx   # 소비
-│  │  ├─ budget.tsx         # 예산 관련 라우트 또는 이전 구조
-│  │  └─ mypage.tsx         # 마이페이지
-│  ├─ auth/
-│  │  ├─ login.tsx          # 로그인
-│  │  └─ signup.tsx         # 회원가입
-│  └─ _layout.tsx
-│
+│  │  ├─ _layout.tsx
+│  │  ├─ home.tsx / challenge.tsx / social.tsx
+│  │  ├─ report.tsx / transactions.tsx / mypage.tsx
+│  │  ├─ character.tsx      # 숨김 탭 경로
+│  │  └─ budget.tsx         # 소비 화면으로 리다이렉트
+│  ├─ auth/login.tsx / auth/signup.tsx
+│  ├─ social/[userId].tsx
+│  ├─ shop.tsx / inventory.tsx
+│  └─ _layout.tsx / index.tsx
 ├─ components/
-│  ├─ AnimatedButton.tsx
-│  ├─ AnimatedProgressBar.tsx
-│  ├─ AppScreenHeader.tsx
-│  ├─ AppToast.tsx
-│  ├─ EmptyState.tsx
-│  ├─ EmptyStateCard.tsx
-│  ├─ GlassCard.tsx
-│  ├─ GlassTopHeader.tsx
-│  ├─ JellySegmentedControl.tsx
-│  ├─ JellyTabBar.tsx
-│  ├─ MotionCard.tsx
-│  └─ (external-link / haptic-tab / hello-wave / parallax-scroll-view / themed-text / themed-view: Expo 템플릿 기본 제공)
-│
-├─ constants/
-│  ├─ colors.ts / theme.ts / typography.ts / motion.ts
-│  └─ mockUser.ts / mockCategories.ts / mockChallenges.ts / mockTransactions.ts / mockAiResult.ts / mockTypes.ts
-│
+│  ├─ AppTabBar.tsx / GlassCard.tsx / CharacterRoom.tsx
+│  ├─ CsvImportCard.tsx / TransactionDatePicker.tsx
+│  ├─ ChallengeSettlementPopup.tsx
+│  └─ mascot/ / 기타 공통·기존 컴포넌트
 ├─ contexts/
-│  ├─ ToastContext.tsx
+│  ├─ MoniThemeContext.tsx / ToastContext.tsx
 │  └─ MissionContext.tsx
-│
+├─ constants/              # 색상·테마·타이포그래피·기존 mock 자산
 ├─ services/
 │  ├─ apiClient.ts / apiConfig.ts / tokenStorage.ts
 │  ├─ authApi.ts / authService.ts
 │  ├─ categoryApi.ts / categoryService.ts
 │  ├─ challengeApi.ts / challengeService.ts
 │  ├─ reportApi.ts / reportService.ts
-│  └─ transactionApi.ts / transactionService.ts
-│
-├─ types/
-│  └─ api.ts
-│
+│  ├─ transactionApi.ts / transactionService.ts
+│  ├─ transactionImportApi.ts / socialApi.ts / publicInventory.ts
+│  └─ shopApi.ts / shopService.ts / shopCatalog.ts / roomLayout.ts
+├─ types/api.ts / types/report.ts / types/transactionImport.ts
 ├─ utils/
-│  ├─ aiFormat.ts
-│  ├─ budgetStatus.ts
-│  └─ categoryMeta.ts
-│
-├─ .env.local
-├─ package.json
+├─ package.json / package-lock.json / vercel.json
 └─ README.md
 ```
 
-파일명은 실제 브랜치 상태에 따라 일부 다를 수 있습니다. 라우트와 서비스 구조를 확인할 때는 `app/`, `services/`, `types/`를 우선 확인합니다.
-
 ## 공용 컴포넌트
 
-| 컴포넌트 | 역할 | 주요 사용처 |
+| 컴포넌트 | 역할 | 사용/상태 |
 |---|---|---|
-| `GlassCard` | 글래스모피즘 카드 + 등장 애니메이션 | 홈, 리포트 카드 |
-| `MotionCard` | 화면 포커스 시 모션 반응 카드 | 챌린지 카드 |
-| `GlassTopHeader` | 블러 처리된 상단 헤더 | 전체 탭 화면 |
-| `JellyTabBar` | 하단 탭바 (탄성 애니메이션 + 햅틱) | 전체 레이아웃 |
-| `JellySegmentedControl` | 세그먼트 토글 (탄성 애니메이션) | 소비 필터, 기간 선택 |
-| `AnimatedButton` | 눌림 애니메이션 버튼 | 전체 화면 |
-| `AnimatedProgressBar` | 예산 진행률 바 | 홈, 소비, 리포트 |
-| `AppToast` | 전역 토스트 알림 | 챌린지 완료 등 액션 피드백 |
-| `AppScreenHeader` | 화면 상단 타이틀 영역 | 전체 탭 화면 |
-| `EmptyState` / `EmptyStateCard` | 데이터 없음 안내 UI (전체 화면형 / 카드형) | 소비·리포트 빈 상태 |
+| `AppTabBar` | 현재 하단 탭 UI | 탭 레이아웃에서 사용 |
+| `GlassCard` | 외곽선 없는 공통 카드 | tone 호환, delay는 기존 호출 호환 용도 |
+| `CharacterRoom` | 캐릭터·장착 가구·방 표시 | 본인·친구 화면 |
+| `MoniMascot` / `WanderingMascot` | 캐릭터 표현·움직임 | 방·홈·챌린지 등 |
+| `CsvImportCard` | CSV/XLSX 선택·미리보기 | 서버 계약 보완 필요 |
+| `TransactionDatePicker` | 지출 날짜 선택 | 소비 등록·수정 |
+| `ChallengeSettlementPopup` | 지난 정산 결과 모달 | 이력 API로 연결 보완 필요 |
+| `AppToast` / `AppScreenHeader` | 알림·상단 제목 | 공통 |
+| `EmptyState` / `EmptyStateCard` | 데이터 없음 표현 | 공통 |
+| `AnimatedButton` / `AnimatedProgressBar` | 버튼·진행률 표현 | 기존 호출부 |
 
-위 10개는 Moni 자체 제작 컴포넌트입니다. 그 외 `external-link`, `haptic-tab`, `hello-wave`, `parallax-scroll-view`, `themed-text`, `themed-view`는 Expo 템플릿이 기본 제공하는 컴포넌트로, 직접 수정한 적이 없습니다.
+`JellyTabBar`, `GlassTopHeader`, `MotionCard` 등 파일이 남아 있는 것만으로 현재 모든 화면의 활성 컴포넌트라고 판단하지 않습니다.
 
 ## API 레이어 구조
 
-서비스 폴더는 두 계층으로 나뉩니다.
-
-- `*Api.ts` — 백엔드 엔드포인트와 1:1 대응하는 raw HTTP 호출 (`apiClient` 사용)
-- `*Service.ts` — 화면에서 바로 쓰기 좋은 형태로 `*Api.ts`를 감싼 함수 (토큰 저장, 응답 가공 등 부가 로직 포함)
-
-예: `signupApi()`는 단순 POST 요청만 하고, `signupUser()`(in `authService.ts`)는 그 결과로 받은 토큰을 저장까지 처리합니다. 화면 컴포넌트는 항상 `*Service.ts`만 import해서 쓰면 됩니다.
+* `*Api.ts`는 경로와 요청 형태를 캡슐화합니다.
+* `*Service.ts`는 일부 기능에서 응답을 화면용으로 변환합니다.
+* 일부 화면은 `apiRequest`를 직접 사용하며, 파일 가져오기는 multipart용 호출 함수를 사용합니다.
+* 토큰 저장은 `loginApi()`에서 처리하며, `signupUser()`가 회원가입 토큰을 저장하는 구조가 아닙니다.
 
 ---
 
@@ -292,60 +284,46 @@ frontend/mobile/
 ### 로그인
 
 ```text
-사용자 입력
-→ POST /login
-→ access_token 저장
-→ GET /me
-→ 홈 또는 탭 화면 진입
+입력 → POST /login → access_token 저장 → GET /me → 홈
 ```
 
 ### 지출 추가
 
 ```text
-소비 탭 입력
-→ POST /transactions
-→ 최근 지출 목록 갱신
-→ 이번 달 지출 합계 갱신
-→ 홈 / 리포트 재진입 시 월간 리포트 갱신
+소비 입력 → POST /transactions → 서버 분류/검사·저장 → 거래 재조회
+→ 홈·리포트 재진입 시 최신 집계 조회
 ```
 
 ### 지출 수정
 
 ```text
-기존 지출 선택
-→ 날짜 / 금액 / 결제처 / 카테고리 수정
-→ PATCH /transactions/{tx_id}
-→ 목록 재조회
-→ 월간 리포트 기준 변경
+수정 입력 → PATCH /transactions/{tx_id} → 캐시 무효화 → 목록 재조회
 ```
+
+메모 빈 문자열은 삭제입니다. 날짜 변경 시 이전·새 기간 집계를 함께 확인합니다.
 
 ### 예산 수정
 
 ```text
-카테고리 선택
-→ 월 예산 / 알림 기준 / 미션 포함 여부 수정
-→ PATCH /categories/{category_id}
-→ 소비 탭 게이지 즉시 반영
-→ 홈 / 리포트 재진입 시 예산 상태 반영
+항목별 예산 수정 → PATCH /categories/{category_id} → 화면 재조회
+→ 조건 충족 시 서버의 PENDING 챌린지 재생성 예약
 ```
 
 ### 챌린지 완료
 
 ```text
-챌린지 완료 클릭
-→ PATCH /challenges/{challenge_id}/status
-→ status: SUCCESS
-→ XP / 레벨 반영
+완료 표시 → SUCCESS 요청 → 서버 VERIFYING 반환
+→ 완료 대기 표시 → 다음 날 검증 성공 시 XP 반영
 ```
 
 ### 챌린지 완료 취소
 
 ```text
-완료된 챌린지 다시 클릭
-→ PATCH /challenges/{challenge_id}/status
-→ status: PENDING
-→ XP / 레벨 재반영
+당일 VERIFYING 항목 선택 → PENDING 요청 → 표시 취소
+→ 보상 지급 전이므로 XP 회수 없음
 ```
+
+확정 SUCCESS/FAILED 항목은 일반 체크 토글로 되돌리지 않습니다.
 
 ---
 
@@ -353,40 +331,35 @@ frontend/mobile/
 
 ### 월말 예상 지출
 
-월말 예상 지출은 예산이 아니라 실제 지출 속도를 기반으로 계산됩니다.
+홈·리포트가 사용하는 월간 API 전망은 다음 기준입니다.
 
 ```text
-현재까지의 이번 달 지출 ÷ 오늘 날짜 × 이번 달 전체 일수
+해당 월 지출 합계 ÷ 기준일 일자 × 해당 월 일수
 ```
 
-따라서 카테고리별 예산을 수정해도 월말 예상 지출 자체는 바로 바뀌지 않습니다.
-
-예산 수정 시 바뀌는 값은 다음과 같습니다.
-
-* 예산 사용 게이지
-* 예산 대비 상태
-* 초과 예상 / 여유 예상
-* 예산 압박도
+챌린지용 ARIMA 예상 지출과 동일한 값이라고 표시하지 않습니다. 종료 월은 실제 합계입니다.
 
 ### 소비 탭 예산 게이지
 
-소비 탭의 카테고리별 예산 게이지는 실제 거래 내역과 실제 카테고리 예산을 기준으로 계산합니다.
-
 ```text
-카테고리별 월말 예상 지출 ÷ 카테고리 월 예산
+카테고리별 이번 달 실제 지출 ÷ 해당 카테고리 월 예산
 ```
+
+이는 예상 지출 사용률이 아닙니다. 예산 0·초과 지출 시 게이지와 문구를 별도로 점검합니다.
+
+### 테마 적용
+
+기본은 버터색입니다. 로그인 사용자의 **장착된 CHARACTER 컬러 아이템**을 기준으로 공통 테마를 결정하며 가구·벽지는 앱 테마를 바꾸지 않습니다. 공통 Context와 토큰을 사용하지 않는 직접 지정 색상은 별도 점검합니다. 친구의 캐릭터 색을 보더라도 본인의 전역 테마가 상대 색으로 바뀌면 안 됩니다.
 
 ---
 
 ## 타입 체크
 
-수정 후 TypeScript 오류를 확인합니다.
-
-```bash
+```powershell
 npx tsc --noEmit
 ```
 
-오류가 없으면 프론트 타입 기준은 통과한 것입니다.
+타입 검사 통과는 서버 응답·업로드·정산·시각적 배치의 정상 작동을 보장하지 않습니다.
 
 ---
 
@@ -394,45 +367,35 @@ npx tsc --noEmit
 
 ### 1. 인증
 
-1. 새 이메일로 회원가입
-2. 로그인
-3. 마이페이지에서 사용자 정보 확인
-4. 개인정보 수정 후 반영 확인
+회원가입 → 로그인 → 내 정보 조회 → 닉네임 변경 → 재로그인 후 저장 확인. DB 컬럼 누락 500과 계정 오류 401을 구분합니다.
 
 ### 2. 소비 기록
 
-1. 소비 탭 이동
-2. 지출 추가
-3. 날짜, 결제처, 금액, 카테고리 입력
-4. 최근 지출에 반영 확인
-5. 기존 지출 수정
-6. 기존 지출 삭제
+새 지출·과거 날짜·수정·삭제·메모 삭제·자동 분류·없는 카테고리 400을 확인합니다.
 
 ### 3. 예산
 
-1. 소비 탭의 항목별 예산 상태 확인
-2. 카테고리 선택
-3. 월 예산 수정
-4. 알림 기준 수정
-5. 오늘의 미션 후보 포함 여부 수정
-6. 저장 후 새로고침해도 값 유지 확인
+항목별 예산 저장·1~100% 알림 기준·챌린지 대상 변경·예산 증액 후 예약 결과를 확인합니다. 독립 예산 탭이 없는지 확인합니다.
 
 ### 4. 리포트
 
-1. 홈 / 소비 / 리포트의 이번 달 지출 수치 비교
-2. 지출이 없을 때 빈 상태 안내 확인
-3. 지출 추가 후 요일별 소비 그래프 표시 확인
-4. 카테고리별 예산 상태 반영 확인
+주간·월간·종료 기간·빈 데이터·기간 이동·날짜 변경 후 캐시 무효화를 확인합니다.
 
 ### 5. 챌린지
 
-1. 챌린지 탭 이동
-2. 오늘의 챌린지 조회
-3. 챌린지가 없을 경우 생성
-4. 챌린지 완료
-5. XP 증가 확인
-6. 완료 취소
-7. XP 반영 확인
+생성 → 완료 대기 → 체크 취소 시 보상 없음 → 다음 날 검증 → 중복 보상 없음 순으로 점검합니다. UI와 이력 API 연결 문제는 별도 실패로 기록합니다.
+
+### 6. 소셜·꾸미기
+
+별도 테스트 계정 두 개로 친구 요청·수락·거절·취소·삭제와 공개 프로필을 확인합니다. 아이템 장착 후 본인/친구 방에 동일한 상태가 보이는지 확인합니다.
+
+### 7. 파일 가져오기
+
+서버 계약 수정 후 토스 XLSX와 일반 CSV를 사용합니다. 수입·환불·중복·잘못된 행·분류 없음·재업로드·취소 거래를 포함해 저장 데이터까지 검증합니다. 현 상태를 정상 완료로 기록하지 않습니다.
+
+### 8. 테마·레이아웃
+
+스킨 미장착 버터 → 장착 색상 → 해제 버터를 확인합니다. 좁은 화면의 챌린지 캐릭터·진행도, 카드 외곽선, 팝업 및 닉네임 수정 위치를 점검합니다.
 
 ---
 
@@ -440,68 +403,54 @@ npx tsc --noEmit
 
 ### Expo Go에서 화면이 무한 로딩됨
 
-현재 프로젝트는 Expo Web 기준으로 확인합니다.
-
-```bash
-npx expo start --web --clear
-```
+기존 Expo Web 실행 방식으로 확인합니다. 재설치나 다른 실행 환경 변경부터 시작하지 않습니다.
 
 ### API 요청이 CORS로 막힘
 
-프론트가 배포 서버를 직접 호출할 때 CORS 설정이 맞지 않으면 브라우저에서 차단될 수 있습니다. 로컬 개발 중에는 `.env.local`의 API 주소를 로컬 백엔드로 맞춰 확인합니다.
-
-```env
-EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
-```
+Network에서 실제 Origin·Request URL·상태를 먼저 확인합니다. 500 응답에 CORS 헤더가 없어 같은 문구가 표시될 수 있으므로, `/signup` 500을 무조건 프론트 주소 문제로 판단하지 않습니다.
 
 ### 로그인은 되지만 인증 API가 401을 반환함
 
-토큰 저장 또는 Authorization 헤더 전달을 확인합니다.
-
-인증 API에는 아래 헤더가 필요합니다.
-
-```text
-Authorization: Bearer {access_token}
-```
+로그인 이후 `/me` 요청의 Authorization과 토큰 저장 상태를 확인합니다. 민감한 토큰을 로그·이슈에 붙이지 않습니다.
 
 ### 지출 수정이 500으로 실패함
 
-백엔드의 날짜 처리에서 `tx_date`가 문자열 또는 date 객체로 들어올 수 있습니다. 백엔드에서 두 경우를 모두 처리해야 합니다.
+Traceback을 확인하고 DB 스키마·실행 중인 서버 버전·입력 형식을 대조합니다. 현재 schema는 date/time을 파싱하므로 예전 날짜 문자열 문제라고 일괄 단정하지 않습니다.
 
 ### Swagger Authorize가 422를 반환함
 
-현재 로그인 API는 JSON body 기반입니다. Swagger의 OAuth2 Authorize 창은 form 방식으로 토큰을 요청하므로 맞지 않을 수 있습니다.
+JSON 기반 `/login`과 Swagger OAuth2 form 인증 방식이 다를 수 있습니다. JSON 요청으로 토큰을 발급받아 인증 헤더로 확인합니다.
 
-이 경우 PowerShell 또는 프론트 로그인 흐름으로 토큰을 발급받아 테스트합니다.
+### 파일 업로드 라우트에서 서버 기동 실패
+
+현재 서버 의존성에는 `python-multipart`와 `openpyxl`이 있습니다. 설치 누락은 백엔드 담당 환경에서 같은 Python의 pip로 확인합니다. 프론트 코드 변경으로 해결할 문제가 아닙니다.
+
+### 테마 컴포넌트 타입 오류
+
+`GlassCard`의 기존 `tone`/`delay` 호환과 `useMoniUi()` 호출 범위를 확인합니다. 다른 컴포넌트 안에서 선언한 `themedUi`를 자식 함수에서 사용할 수 없습니다.
 
 ---
 
 ## 문서 위치
 
-프로젝트 전체 설명:
-
-```text
-../../README.md
-```
-
-Android / API 상세 명세:
-
-```text
-../../docs/api.md
-```
-
-AI 엔진 상세 설명:
-
-```text
-../../api/ai/README.md
-```
+| 문서 | 경로 |
+|---|---|
+| 프로젝트 전체 | [../../README.md](../../README.md) |
+| API 명세 | [../../docs/api.md](../../docs/api.md) |
+| AI 엔진 | [../../api/ai/README.md](../../api/ai/README.md) |
+| 통합 테스트 | [../../docs/test-scenario.md](../../docs/test-scenario.md) |
 
 ---
 
 ## 개발 기준
 
-* 화면 확인은 Expo Web 기준
-* API Base URL은 `.env.local`에서 관리
-* 사용자에게 보이는 화면에는 `mock`, `fallback`, `임시` 같은 개발자용 문구를 노출하지 않음
-* 지출 / 예산 / 챌린지 흐름은 실제 API 기준으로 확인
-* 변경 후 `npx tsc --noEmit` 실행
+* `feature/frontend`에서 작업 후 커밋·푸시·main 대상 PR을 진행합니다.
+* 프론트 작업은 `frontend/mobile/`로 제한하며 백엔드·DB 변경이 필요하면 담당자와 별도로 합의합니다.
+* 사용자 화면에 mock·fallback·임시 구현 안내 등 개발용 표현을 노출하지 않습니다.
+* 기능을 만들 때 서버 경로·필수 필드·응답·오류 코드를 먼저 대조합니다.
+* 변경 후 `npx tsc --noEmit`과 Expo Web 기능·화면 점검을 수행합니다.
+* 테스트하지 않은 항목은 PR에서 확인 필요/보류로 남깁니다.
+
+---
+
+> 코드 근거: [frontend/mobile/package.json](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/package.json) · [frontend/mobile/app/(tabs)/_layout.tsx](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/app/%28tabs%29/_layout.tsx) · [frontend/mobile/app/(tabs)/transactions.tsx](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/app/%28tabs%29/transactions.tsx) · [frontend/mobile/app/(tabs)/social.tsx](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/app/%28tabs%29/social.tsx) · [frontend/mobile/contexts/MoniThemeContext.tsx](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/contexts/MoniThemeContext.tsx) · [frontend/mobile/components/ChallengeSettlementPopup.tsx](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/components/ChallengeSettlementPopup.tsx) · [frontend/mobile/services/transactionImportApi.ts](https://github.com/SPY-capstone-2026/SPY-capstoneREPO/blob/bdc23f9c05c1c827ffdd0ccfe6e8889ba9b8948c/frontend/mobile/services/transactionImportApi.ts)
