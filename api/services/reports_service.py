@@ -199,3 +199,59 @@ def build_weekly_breakdown(transactions, period_start: date, period_end: date):
         })
 
     return result
+
+
+# ----------------------------------------
+# 월 × 카테고리 지출 합계 (예측 없이 거래 테이블에서 바로 집계)
+# ----------------------------------------
+def shift_month(first_day: date, months: int) -> date:
+    """그 달 1일에서 months 개월 이동한 달의 1일 (음수면 과거)."""
+    index = first_day.year * 12 + (first_day.month - 1) + months
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def get_category_monthly_totals(session, user_id: str, start: date, end: date):
+    """
+    start~end(포함) 거래를 카테고리·월별로 한 번의 쿼리로 합산한다.
+    반환: [{"category_name": "식비", "year_month": "2026-09", "total_spent": 152000}, ...]
+          year_month → category_name 순 정렬. 지출이 없는 (월, 카테고리)는 넣지 않는다.
+    """
+    from sqlalchemy import extract, func
+    from sqlmodel import select
+    from models import Transaction
+
+    year = extract("year", Transaction.tx_date)
+    month = extract("month", Transaction.tx_date)
+    rows = session.exec(
+        select(Transaction.final_category, year, month, func.sum(Transaction.amount))
+        .where(Transaction.user_id == user_id)
+        .where(Transaction.tx_date >= start)
+        .where(Transaction.tx_date <= end)
+        .group_by(Transaction.final_category, year, month)
+    ).all()
+
+    result = [
+        {
+            "category_name": category,
+            "year_month": f"{int(y):04d}-{int(m):02d}",
+            "total_spent": int(total or 0),
+        }
+        for category, y, m, total in rows
+    ]
+    result.sort(key=lambda r: (r["year_month"], r["category_name"]))
+    return result
+
+
+def call_with_supported_kwargs(fn, *args, **optional_kwargs):
+    """
+    fn 이 받는 키워드 인자만 골라서 넘긴다.
+    AI 쪽 함수에 새 인자(category_history 등)가 아직 없어도 리포트가 깨지지 않게 하기 위함.
+    """
+    import inspect
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return fn(*args)
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return fn(*args, **optional_kwargs)
+    return fn(*args, **{k: v for k, v in optional_kwargs.items() if k in params})
