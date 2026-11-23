@@ -30,9 +30,16 @@ BE가 총평만 받아 직접 조립해도 되고(generate_*), AI가 조립한 �
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Optional
 
 from moni_engine.llm_client import call_llm
+
+# 예산 추천 모듈. 파일이 없거나 import에 실패해도 총평은 정상 동작해야 하므로 감싼다.
+try:
+    from moni_engine import budget as budget_rec
+except Exception:                      # pragma: no cover
+    budget_rec = None
 
 
 SCHEMA_VERSION = "1.0"
@@ -43,8 +50,30 @@ MONTHLY_MAX_SENTENCES = 3
 WEEKLY_MAX_TOKENS = 120
 MONTHLY_MAX_TOKENS = 160
 
+# 숫자 검증. 총평에 나온 수가 전부 요약에 있던 수인지 확인하고,
+# 아니면 LLM 결과를 버리고 규칙 문구로 폴백한다.
+#
+# 숫자를 아예 금지하던 이전 방식은 "몇 개 달성하셨고", "절반 넘게" 같은
+# 얼버무림을 만들었다. 숫자를 알면서 지우니 문장만 남고 정보가 사라진다.
+# 그래서 가드를 "숫자를 안 준다"에서 "준 숫자만 쓰게 한다"로 바꾼다.
+NUMBER_GUARD_ENABLED = True
+
+# 예산 추천 문구를 총평 끝에 이어붙일지 여부.
+#   True  : 기존 FE가 comment만 렌더링해도 바로 보인다 (현재 단계)
+#   False : budget_recommendation_text 필드로만 내보낸다 (FE가 따로 그릴 때)
+APPEND_RECOMMENDATION_TO_COMMENT = True
+
 # 소비 증감을 "언급할 만하다"고 볼 최소 변화율
 MIN_CHANGE_RATIO_TO_MENTION = 0.1   # 10% 이상 변했을 때만 언급
+
+# 비율과 함께 쓰는 절대금액 하한.
+#   ① 지난 기간이 0원이면 비율을 낼 수 없다 (0 → 30,000)
+#   ② 3,000원이 3,500원이 된 것은 16%지만 언급할 가치가 없다
+MIN_CHANGE_AMOUNT_TO_MENTION = 10000
+
+# 카테고리별 예산 사용률 구간. 초과(1.0 이상)는 overruns가 따로 다루므로 뺀다.
+CATEGORY_TIGHT = 0.9      # 이 위면 "넘기진 않았지만 빠듯했음"
+CATEGORY_COMFORTABLE = 0.6  # 이 아래면 "여유 있게 지킴"
 
 # 챌린지 달성률 평가 구간.
 # "잘했다 / 보통 / 아쉽다"의 판단은 규칙이 내리고, LLM은 그 라벨을 표현만 한다.
@@ -96,6 +125,8 @@ K_TOTAL_COUNT = ("total_count", "total", "generated_count")
 
 # /reports/monthly → data.category_overrun[]
 K_OVERRUN_DATE = ("overrun_date", "exceeded_date", "over_date")
+K_EVALUATED = ("evaluated_categories", "evaluatedCategories", "categories")
+K_ACTUAL_SPEND = ("actual_spend", "actualSpend", "spent", "total_spent")
 
 # /reports/monthly → data.weekly_breakdown[]
 #   주의: monthly 응답에는 weekly_trend도 있는데 그건 '요일별'(월~일) 집계다.
@@ -228,6 +259,14 @@ def extract_weekly_facts(
         diff = _pick(c, K_CHANGE)
         diff = _num(diff) if diff is not None else (this_w - last_w)
 
+        # 언급할 만한 변화인지 먼저 거른다.
+        # 이 필터가 없으면 8% 증가(112,000 → 121,000) 같은 노이즈가
+        # "식비 지출이 늘어남"으로 올라가 괜히 지적거리가 된다.
+        if abs(diff) < MIN_CHANGE_AMOUNT_TO_MENTION:
+            continue
+        if last_w > 0 and abs(diff) / last_w < MIN_CHANGE_RATIO_TO_MENTION:
+            continue
+
         entry = {"category": name, "this_week": this_w,
                  "last_week": last_w, "change": diff}
         if diff > 0:
@@ -357,6 +396,29 @@ def extract_monthly_facts(
         if name and date:   # overrun_date가 null이면 초과 안 한 것
             overruns.append({"category": name, "overrun_date": str(date)})
 
+    # ---- 카테고리별 예산 사용률 ----
+    # evaluated_categories 는 지금까지 쓰지 않던 재료다. 여기에만 있는 정보가
+    # "예산 안에서 잘 지킨 카테고리"인데, overruns 는 넘긴 것만 알려주므로
+    # 이걸 안 쓰면 총평이 지적만 할 수 있고 칭찬할 거리를 못 찾는다.
+    tight, kept_well = [], []
+    for item in _as_list(_pick(monthly_report, K_EVALUATED, [])):
+        name = _pick(item, K_CATEGORY)
+        limit = _num(_pick(item, K_BUDGET))
+        spent = _num(_pick(item, K_ACTUAL_SPEND))
+        if not name or limit <= 0:
+            continue
+        ratio = spent / limit
+        entry = {"category": name, "ratio": ratio}
+        if ratio >= 1.0:
+            continue                      # 초과는 overruns 가 다룬다 (중복 방지)
+        if ratio >= CATEGORY_TIGHT:
+            tight.append(entry)
+        elif ratio <= CATEGORY_COMFORTABLE:
+            kept_well.append(entry)
+    # 가장 빠듯했던 곳 하나, 가장 여유 있던 곳 하나. 전부 나열하면 길어진다.
+    tightest = max(tight, key=lambda e: e["ratio"], default=None)
+    best_kept = min(kept_well, key=lambda e: e["ratio"], default=None)
+
     # ---- 예산 변경 이력 ----
     budget_changes = []
     for item in _as_list(_unwrap(budget_history)):
@@ -385,6 +447,8 @@ def extract_monthly_facts(
         "weekly_amounts": weekly_amounts,
         "trend": trend,
         "overruns": overruns,
+        "tightest_category": tightest,
+        "best_kept_category": best_kept,
         "budget_changes": budget_changes,
         "challenge_completed": challenge.get("completed_count", 0),
         "challenge_total": challenge.get("total_count", 0),
@@ -487,32 +551,62 @@ def _weekly_fact_lines(f: dict) -> List[str]:
     return lines
 
 
+def _challenge_worth_mentioning(completed: int, total: int) -> bool:
+    """
+    챌린지 달성을 총평에 넣을지. '보통' 구간이면 뺀다.
+
+    보통은 칭찬도 정보도 아닌 등급 통보다. 매달 "당신의 달성은 보통입니다"를
+    받으면 리포트를 열 이유가 줄어든다. 개수는 리포트 UI에 이미 숫자로 있다.
+    요약 줄을 셋(개수·라벨·XP) 비우면 그 자리에 카테고리 이야기가 들어간다.
+    """
+    if total <= 0:
+        return False
+    rate = completed / total
+    return rate >= COMPLETION_GOOD or rate < COMPLETION_FAIR
+
+
 def _monthly_fact_lines(f: dict) -> List[str]:
-    """월간 사실을 짧은 문장 목록으로. (근거 없는 항목은 제외)"""
+    """
+    월간 사실을 짧은 문장 목록으로. (근거 없는 항목은 제외)
+
+    순서가 중요하다. 총평은 네 문장까지인데 요약은 그보다 길 수 있어,
+    LLM은 앞에서부터 고른다. 그래서 '총평만 말할 수 있는 것'을 위에 둔다.
+      예산 사용 → 카테고리별 결과 → 흐름 → 예산 조정 → 챌린지
+    """
     lines = []
 
-    if f["challenge_total"] > 0:
-        lines.append(f"이번 달 챌린지 {f['challenge_completed']}개 달성")
-        label = _completion_label(f["challenge_completed"], f["challenge_total"])
-        if label:
-            lines.append(label)
-    if f["xp_earned"]:
-        lines.append(f"획득 XP {int(f['xp_earned'])}")
-
-    if f["trend"] != "판단불가":
-        lines.append(f"소비 흐름: {f['trend']}")
-
+    # ---- 예산이 중심 ----
     if f["budget"] > 0:
         lines.append(f"이번 달 예산의 {f['usage_ratio']:.0%}를 사용")
         label = _usage_label(f["usage_ratio"], f["budget"])
         if label:
             lines.append(label)
 
+    # 초과한 카테고리는 한 줄로 합친다. 두 줄로 주면
+    # "교통비가 넘겼고, 총 2개가 초과됐으며"처럼 같은 사실을 두 번 말하게 된다.
     if f["overruns"]:
         first = f["overruns"][0]
-        lines.append(f"{first['category']}는 {first['overrun_date']}에 예산을 넘김")
-        if len(f["overruns"]) > 1:
-            lines.append(f"예산을 넘긴 카테고리가 총 {len(f['overruns'])}개")
+        rest = len(f["overruns"]) - 1
+        tail = f" (예산을 넘긴 카테고리는 모두 {len(f['overruns'])}개)" if rest else ""
+        lines.append(
+            f"{_topic(first['category'])} {first['overrun_date']}에 예산을 넘김{tail}"
+        )
+
+    # 넘기진 않았지만 빠듯했던 곳 / 여유 있게 지킨 곳
+    if f.get("tightest_category"):
+        t = f["tightest_category"]
+        lines.append(
+            f"{_topic(t['category'])} 넘기지 않았지만 예산의 {t['ratio']:.0%}까지 씀"
+        )
+    if f.get("best_kept_category"):
+        b = f["best_kept_category"]
+        lines.append(
+            f"{_topic(b['category'])} 예산의 {b['ratio']:.0%}만 써서 여유 있게 지킴"
+        )
+
+    # ---- 한 달의 흐름 ----
+    if f["trend"] != "판단불가":
+        lines.append(f"소비 흐름: {f['trend']}")
 
     if f["budget_changes"]:
         ch = f["budget_changes"][0]
@@ -520,6 +614,19 @@ def _monthly_fact_lines(f: dict) -> List[str]:
             f"{ch['category']} 예산을 월 중간에 {ch['direction']}함 "
             f"(사실만 언급할 것. 잘한 일인지 아닌지 평가하지 말 것)"
         )
+
+    # ---- 챌린지는 말할 가치가 있을 때만, 맨 뒤에 ----
+    # 다만 다른 사실이 너무 적으면 '보통'이어도 남긴다.
+    # 그마저 빼면 LLM 호출 기준에 미달해 규칙 문구로 떨어진다.
+    worth = _challenge_worth_mentioning(f["challenge_completed"], f["challenge_total"])
+    too_few = _substantive_count(lines) < MIN_FACTS_FOR_LLM
+    if f["challenge_total"] > 0 and (worth or too_few):
+        lines.append(f"이번 달 챌린지 {f['challenge_completed']}개 달성")
+        label = _completion_label(f["challenge_completed"], f["challenge_total"])
+        if label:
+            lines.append(label)
+        if f["xp_earned"]:
+            lines.append(f"획득 XP {int(f['xp_earned'])}")
 
     return lines
 
@@ -535,6 +642,77 @@ def _substantive_count(lines: List[str]) -> int:
 
 def _lines_to_text(lines: List[str]) -> str:
     return "\n".join(f"- {l}" for l in lines)
+
+
+def _topic(word: str) -> str:
+    """카테고리명에 '은/는'을 붙인다. 받침이 있으면 '은'."""
+    word = str(word or "")
+    if not word:
+        return word
+    last = word[-1]
+    if "가" <= last <= "힣":
+        has_batchim = (ord(last) - 0xAC00) % 28 != 0
+        return word + ("은" if has_batchim else "는")
+    return word + "은(는)"
+
+
+# ============================================================
+# 숫자 검증
+# ============================================================
+_NUMBER_RE = re.compile(r"\d[\d,]*")
+
+
+def _numbers_in(text: str) -> set:
+    """문자열에 등장하는 수를 정수 집합으로. 천단위 콤마는 무시한다."""
+    found = set()
+    for token in _NUMBER_RE.findall(text or ""):
+        try:
+            found.add(int(token.replace(",", "")))
+        except ValueError:
+            continue
+    return found
+
+
+def _numbers_are_grounded(output: str, summary: str) -> bool:
+    """
+    총평에 나온 수가 전부 요약에 있던 수인지 확인한다.
+
+    날짜 표기가 바뀌는 건 허용된다. 요약의 "2026-10-26"은 {2026, 10, 26}이
+    되므로, 총평이 "10월 26일"로 바꿔 써도 통과한다.
+
+    만/천 단위로 줄여 쓰는 것도 허용한다 (150,000원 → "15만원").
+    요약에 금액이 들어가는 단계를 대비한 것이다.
+    """
+    allowed = _numbers_in(summary)
+    for n in _numbers_in(output):
+        if n in allowed:
+            continue
+        if n * 10_000 in allowed or n * 1_000 in allowed:
+            continue
+        return False
+    return True
+
+
+def _verified_llm_text(text: Optional[str], summary: str, period: str) -> Optional[str]:
+    """
+    LLM 결과를 검증해 통과한 것만 돌려준다. 실패하면 None (→ 규칙 폴백).
+
+    폴백 시 comment_source는 기존 값("rule_fallback")을 그대로 쓴다.
+    FE가 모르는 값을 받으면 화면에 그 문자열을 그대로 찍기 때문이다.
+    대신 서버 로그에 남겨 발동 빈도를 확인할 수 있게 한다.
+    """
+    if not text:
+        return None
+    if not NUMBER_GUARD_ENABLED:
+        return text
+    if _numbers_are_grounded(text, summary):
+        return text
+    print(
+        f"[report.py 숫자 가드] {period} 총평에 요약에 없는 수가 있어 폐기합니다.\n"
+        f"  총평: {text}\n"
+        f"  요약에 있던 수: {sorted(_numbers_in(summary))}"
+    )
+    return None
 
 
 # 이전 이름 호환 (테스트 스크립트 등에서 사용)
@@ -579,7 +757,18 @@ _COMMON_RULES = """[사실 규칙 — 가장 중요]
 
 [표현 규칙]
 - 요약을 그대로 나열하지 말고 자연스러운 말로 녹여줄 것
-- 금액, 퍼센트, 개수 같은 숫자는 문장에 넣지 말 것
+- 요약에 적힌 숫자는 문장에 그대로 써도 된다
+- 숫자를 얼버무리지 말 것. "몇 개", "절반쯤", "중간 정도", "꽤", "조금"처럼
+  뭉개서 쓰면 안 된다. 숫자를 쓰거나, 그 사실을 아예 빼거나 둘 중 하나
+- 숫자를 새로 만들지 말 것. 요약에 없는 수를 계산하거나 단위를 바꾸면 안 됨
+  (달성 개수를 퍼센트로 환산하거나, 금액 몇 개를 더해 합계를 만드는 것 모두 금지)
+- 카테고리 이름은 요약에 적힌 그대로 쓸 것 (카페 → "카페비"처럼 바꾸지 말 것)
+- 같은 사실을 두 번 말하지 말 것
+  (전체 예산 초과와 카테고리 초과를 따로 두 번 짚는 식)
+- 한 문장에 사실을 둘까지만. 셋 이상 이어 붙이지 말 것
+- 사실끼리 관계가 있으면 따로 나열하지 말고 연결해서 말할 것
+  좋은 예: 교통비가 예산을 넘기면서 전체 예산도 초과됐어요
+  나쁜 예: 교통비가 예산을 넘겼고, 두 개 카테고리가 초과됐으며, 식비는 증액했어요
 - 잘한 점이 있으면 먼저 짚고, 신경 쓸 부분은 부드럽게
 - 죄책감이나 훈계 금지
 
@@ -630,9 +819,9 @@ def _build_monthly_prompt(summary_text: str) -> str:
 {_COMMON_RULES}
 
 [길이 — 반드시 지킬 것]
-- 최대 세 문장. 두 문장으로 끝나도 좋음
-- 마지막 문장이 [마무리] 역할을 겸한다 (문장 수를 늘리지 말 것)
-- 각 문장은 짧고 담백하게 (한 문장 40자 안팎)
+- 세 문장에서 네 문장. 마지막 문장이 [마무리] 역할을 겸한다
+- 한 문장은 50자를 넘기지 말 것. 넘칠 것 같으면 문장을 나눌 것
+- 사실이 많으면 문장을 길게 늘이지 말고 덜 중요한 것을 버릴 것
 
 [마무리]
 - 마지막 문장은 다음 달을 향한 가벼운 한마디로 닫을 것
@@ -644,6 +833,8 @@ def _build_monthly_prompt(summary_text: str) -> str:
 - 부담을 주는 다짐 요구 금지
 
 [월간 총평의 초점]
+- 요약에 "여유 있게 지킴"이나 "넘기지 않았지만 ...까지 씀"이 있으면
+  그 카테고리를 반드시 한 번 짚을 것. 넘긴 곳만 말하면 지적만 하는 총평이 된다
 - 한 달의 흐름(초반과 후반이 어떻게 달랐는지)이 있으면 그것을 중심으로
 - 예산을 넘긴 시점이나 예산을 조정한 일이 요약에 있으면, 일어난 일만
   담담하게 짚을 것. 잘한 일이라거나 어쩔 수 없었다는 식으로 감싸지 말 것
@@ -748,9 +939,11 @@ def generate_weekly_comment(
             "highlights": facts,
         }
 
-    text = call_llm(
-        _build_weekly_prompt(_lines_to_text(lines)),
-        max_tokens=WEEKLY_MAX_TOKENS,
+    summary = _lines_to_text(lines)
+    text = _verified_llm_text(
+        call_llm(_build_weekly_prompt(summary), max_tokens=WEEKLY_MAX_TOKENS),
+        summary,
+        "주간",
     )
     if text:
         return {"comment": text, "comment_source": "llm", "highlights": facts}
@@ -762,10 +955,57 @@ def generate_weekly_comment(
     }
 
 
+K_REPORT_MONTH = ("month", "year_month", "period")
+
+
+def _budget_recommendation(
+    category_history: Optional[Any],
+    category_settings: Optional[Any],
+    challenge_stats: Optional[Any],
+    report_month: Optional[str] = None,
+) -> dict:
+    """
+    다음 달 카테고리별 예산 추천을 만든다.
+
+    금액은 전부 budget.py의 규칙이 계산한다. LLM을 거치지 않으므로
+    숫자가 바뀌지 않는다 (총평 프롬프트에서 금액·퍼센트를 뺀 것과 같은 이유).
+
+    추천 실패가 총평 전체를 막아서는 안 되므로, 어떤 예외든 삼키고
+    status에 이유만 남긴다.
+    """
+    empty = {"items": [], "text": "", "status": "disabled"}
+    if budget_rec is None:
+        return empty
+    if category_history is None:
+        return {**empty, "status": "no_history"}
+    # 진행 중인 달의 월 초에는 띄우지 않는다. 총평이 이번 달 이야기를 하는 중에
+    # 다음 달 예산 계획이 붙으면 맥락이 한 칸 건너뛴다.
+    if not budget_rec.should_recommend(report_month):
+        return {**empty, "status": "too_early"}
+    try:
+        items = budget_rec.recommend_budgets(
+            category_history, category_settings, challenge_stats,
+        )
+        # 추천 대상은 '리포트 달의 다음 달'이다. 오늘 기준이 아니라 리포트 기준이어야
+        # 지난 달 리포트를 열었을 때도 문구가 맞는다.
+        target = budget_rec.next_year_month(report_month) if report_month else None
+        return {
+            "items": items,
+            "text": budget_rec.build_recommendation_text(items, target_month=target),
+            "status": "ok" if items else "no_candidates",
+        }
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return {**empty, "status": "error"}
+
+
 def generate_monthly_comment(
     monthly_report: Optional[dict],
     challenge_stats: Optional[Any] = None,
     budget_history: Optional[Any] = None,
+    category_history: Optional[Any] = None,
+    category_settings: Optional[Any] = None,
 ) -> dict:
     """
     월간 리포트 총평을 생성한다.
@@ -779,32 +1019,57 @@ def generate_monthly_comment(
         GET /challenges/stats/by-category (이번 달 기간 지정) 응답
     budget_history : list
         GET /categories/budget-history 응답 (없으면 예산 변경 코멘트 생략)
+    category_history : list
+        최근 6개월 카테고리별 월 합계. BE의 get_category_monthly_totals() 결과.
+        [{"category_name", "year_month", "total_spent"}, ...]
+        없으면 예산 추천을 생략한다.
+    category_settings : list
+        현재 카테고리별 예산. evaluated_categories를 그대로 넘기면 된다
+        (category_name / budget_limit 을 읽는다).
 
     Returns
     -------
-    dict {"comment": str, "comment_source": ..., "highlights": dict}
+    dict {
+        "comment", "comment_source", "highlights",        # 기존
+        "budget_recommendations",                          # 신규: 구조화된 추천
+        "budget_recommendation_text",                      # 신규: 붙인 문구
+        "budget_recommendation_status",                    # 신규: 추천이 없을 때 그 이유
+    }
     """
     facts = extract_monthly_facts(monthly_report, challenge_stats, budget_history)
     lines = _monthly_fact_lines(facts)
 
     if _substantive_count(lines) < MIN_FACTS_FOR_LLM:
-        return {
-            "comment": _rule_based_monthly_comment(facts),
-            "comment_source": "rule_insufficient_data",
-            "highlights": facts,
-        }
+        comment = _rule_based_monthly_comment(facts)
+        source = "rule_insufficient_data"
+    else:
+        summary = _lines_to_text(lines)
+        text = _verified_llm_text(
+            call_llm(_build_monthly_prompt(summary), max_tokens=MONTHLY_MAX_TOKENS),
+            summary,
+            "월간",
+        )
+        if text:
+            comment, source = text, "llm"
+        else:
+            comment, source = _rule_based_monthly_comment(facts), "rule_fallback"
 
-    text = call_llm(
-        _build_monthly_prompt(_lines_to_text(lines)),
-        max_tokens=MONTHLY_MAX_TOKENS,
+    # ---- 예산 추천 ----
+    # 총평이 어떤 경로로 만들어졌든(LLM / 폴백 / 사실 부족) 똑같이 붙는다.
+    rec = _budget_recommendation(
+        category_history, category_settings, challenge_stats,
+        report_month=_pick(monthly_report, K_REPORT_MONTH),
     )
-    if text:
-        return {"comment": text, "comment_source": "llm", "highlights": facts}
+    if APPEND_RECOMMENDATION_TO_COMMENT and rec["text"]:
+        comment = f"{comment}\n\n{rec['text']}" if comment else rec["text"]
 
     return {
-        "comment": _rule_based_monthly_comment(facts),
-        "comment_source": "rule_fallback",
+        "comment": comment,
+        "comment_source": source,
         "highlights": facts,
+        "budget_recommendations": rec["items"],
+        "budget_recommendation_text": rec["text"],
+        "budget_recommendation_status": rec["status"],
     }
 
 
@@ -847,9 +1112,15 @@ def build_monthly_report(
     user_id: Optional[str] = None,
     period_start: Optional[str] = None,
     period_end: Optional[str] = None,
+    category_history: Optional[Any] = None,
+    category_settings: Optional[Any] = None,
 ) -> dict:
     """총평을 포함한 월간 리포트 dict를 조립해 반환한다."""
-    result = generate_monthly_comment(monthly_report, challenge_stats, budget_history)
+    result = generate_monthly_comment(
+        monthly_report, challenge_stats, budget_history,
+        category_history=category_history,
+        category_settings=category_settings,
+    )
 
     return {
         "user_id": user_id,
@@ -863,4 +1134,7 @@ def build_monthly_report(
         "comment": result["comment"],
         "comment_source": result["comment_source"],
         "highlights": result["highlights"],
+        "budget_recommendations": result["budget_recommendations"],
+        "budget_recommendation_text": result["budget_recommendation_text"],
+        "budget_recommendation_status": result["budget_recommendation_status"],
     }
