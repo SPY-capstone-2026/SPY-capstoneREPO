@@ -40,6 +40,10 @@ import type { InventoryItem } from '@/types/api';
 type Props = {
   inventory: InventoryItem[];
   onMascotPress?: () => void;
+  /** 다른 화면에서 가구 편집기로 바로 열 때 사용합니다. */
+  startInEditMode?: boolean;
+  /** 편집기에서 저장 또는 취소한 뒤 호출합니다. */
+  onEditorClose?: () => void;
 };
 
 type RoomAsset = {
@@ -292,7 +296,7 @@ function newestFirst(a: RoomAsset, b: RoomAsset) {
   return (b.acquiredAt ?? '').localeCompare(a.acquiredAt ?? '');
 }
 
-export function CharacterRoom({ inventory, onMascotPress }: Props) {
+export function CharacterRoom({ inventory, onMascotPress, startInEditMode = false, onEditorClose }: Props) {
   const equipped = useMemo(() => inventory.filter((entry) => entry.is_equipped && entry.item), [inventory]);
   const byCategory = useMemo(() => {
     const map = new Map<string, InventoryItem[]>();
@@ -341,10 +345,11 @@ export function CharacterRoom({ inventory, onMascotPress }: Props) {
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [editorBounds, setEditorBounds] = useState<Bounds>({ width: 0, height: 0 });
+  const autoEditOpenedRef = useRef(false);
 
   // Only the owner's character screen supplies onMascotPress. Friend previews
   // must remain read-only and must never load this device's saved room layout.
-  const allowEditing = Boolean(onMascotPress);
+  const allowEditing = Boolean(onMascotPress) || startInEditMode;
   useEffect(() => {
     if (!allowEditing) return;
     let active = true;
@@ -378,12 +383,23 @@ export function CharacterRoom({ inventory, onMascotPress }: Props) {
     setEditing(true);
   };
 
+  // 전용 편집 화면에서는 사용자/배치 정보 로딩 직후 편집 모달을 자동으로 엽니다.
+  useEffect(() => {
+    if (!startInEditMode || autoEditOpenedRef.current || !storageLoaded || !userId) return;
+    autoEditOpenedRef.current = true;
+    setDraft({ ...saved });
+    setSelectedId(null);
+    setErrorText('');
+    setEditing(true);
+  }, [startInEditMode, storageLoaded, userId, saved]);
+
   const closeWithoutSaving = () => {
     if (saving) return;
     setDraft({ ...saved });
     setSelectedId(null);
     setErrorText('');
     setEditing(false);
+    onEditorClose?.();
   };
 
   const handleChange = useCallback((id: string, next: RoomPlacement) => {
@@ -430,6 +446,7 @@ export function CharacterRoom({ inventory, onMascotPress }: Props) {
       setDraft(normalized);
       setEditing(false);
       setSelectedId(null);
+      onEditorClose?.();
     } catch {
       setErrorText('배치를 저장하지 못했습니다. 저장소 설정을 확인하고 다시 시도해 주세요.');
     } finally {
@@ -458,7 +475,7 @@ export function CharacterRoom({ inventory, onMascotPress }: Props) {
         selectedId={null}
         placements={saved}
         onMascotPress={onMascotPress}
-        onOpenEditor={allowEditing ? startEditing : undefined}
+        onOpenEditor={allowEditing && !startInEditMode ? startEditing : undefined}
       />
       {allowEditing && !editing && errorText ? (
         <Text style={[styles.errorText, styles.outsideError]}>{errorText}</Text>
