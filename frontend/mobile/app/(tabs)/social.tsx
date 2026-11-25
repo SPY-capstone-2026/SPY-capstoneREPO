@@ -101,6 +101,20 @@ export default function SocialScreen() {
         </View>
         <Pressable onPress={()=>router.push('/mypage')} style={themedUi.secondary}><Text style={themedUi.buttonText}>내 정보 수정</Text></Pressable>
       </View>
+
+      {/* 내 방만 편집 가능. 친구 방에는 이 버튼을 표시하지 않습니다. */}
+      <View style={[themedUi.row,{justifyContent:'flex-end',marginTop:10,flexWrap:'wrap'}]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="내 방 가구 배치 편집"
+          onPress={()=>router.push('/room-editor')}
+          style={[themedUi.secondary,{flexDirection:'row',alignItems:'center',gap:6}]}
+        >
+          <Text style={themedUi.buttonText}>가구 편집</Text>
+          <ChevronRight size={16} color={palette.ink}/>
+        </Pressable>
+      </View>
+
       <View style={styles.roomArea}><CharacterRoom inventory={inventory}/></View>
       {!me?.nickname && <Text style={[themedUi.muted,{marginTop:12}]}>친구를 추가하려면 마이페이지의 내 정보 수정에서 닉네임을 설정해 주세요.</Text>}
     </View>
