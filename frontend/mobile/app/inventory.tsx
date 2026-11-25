@@ -167,6 +167,22 @@ export default function InventoryScreen() {
           </Pressable>
         </View>
 
+        {/* 보유 아이템 화면에서도 가구 배치 편집을 바로 열 수 있습니다. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="가구 배치 편집 화면 열기"
+          onPress={() => router.push('/room-editor')}
+          style={({ pressed }) => [styles.roomEditShortcut, pressed && styles.pressed]}
+        >
+          <View style={styles.roomEditCopy}>
+            <Text style={styles.roomEditTitle}>가구 편집</Text>
+            <Text style={styles.roomEditDescription}>
+              장착한 가구와 소품을 이동하고 크기를 조절해요.
+            </Text>
+          </View>
+          <ChevronRight size={18} color={colors.text} strokeWidth={2.4} />
+        </Pressable>
+
         <View style={styles.summaryCard}>
           <View style={styles.summaryIcon}>
             <PackageOpen
@@ -382,6 +398,33 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '900',
     color: colors.text,
+  },
+  // 기존 요약 카드 바로 위에 표시되는 가구 편집 바로가기입니다.
+  roomEditShortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 74,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    backgroundColor: colors.butterPale,
+  },
+  roomEditCopy: { flex: 1 },
+  roomEditTitle: {
+    fontFamily: typography.fontFamily,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+  },
+  roomEditDescription: {
+    marginTop: 5,
+    fontFamily: typography.fontFamily,
+    fontSize: 11,
+    color: colors.subText,
   },
   summaryCard: {
     minHeight: 70,

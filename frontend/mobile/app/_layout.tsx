@@ -19,6 +19,7 @@ export default function RootLayout() {
       <Stack.Screen name="social/[userId]" />
       <Stack.Screen name="shop" />
       <Stack.Screen name="inventory" />
+      <Stack.Screen name="room-editor" />
     </Stack>
   </MoniThemeProvider></ToastProvider>;
 }
