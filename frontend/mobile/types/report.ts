@@ -143,6 +143,10 @@ export type ChallengeStatsApiResponse = {
 export type BudgetHistoryItem = {
   id?: string;
   category_name: string;
+  // The current API uses old_limit/new_limit.
+  old_limit?: number;
+  new_limit?: number;
+  direction?: string;
   old_budget_limit?: number;
   previous_budget_limit?: number;
   before_budget_limit?: number;
