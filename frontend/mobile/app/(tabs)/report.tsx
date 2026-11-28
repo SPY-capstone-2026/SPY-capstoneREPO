@@ -268,6 +268,7 @@ function weeklyBreakdownLabel(
 
 function budgetHistoryBefore(item: BudgetHistoryItem) {
   return (
+    item.old_limit ??
     item.old_budget_limit ??
     item.previous_budget_limit ??
     item.before_budget_limit
@@ -276,6 +277,7 @@ function budgetHistoryBefore(item: BudgetHistoryItem) {
 
 function budgetHistoryAfter(item: BudgetHistoryItem) {
   return (
+    item.new_limit ??
     item.new_budget_limit ??
     item.after_budget_limit ??
     item.budget_limit
@@ -284,6 +286,20 @@ function budgetHistoryAfter(item: BudgetHistoryItem) {
 
 function budgetHistoryDate(item: BudgetHistoryItem) {
   return item.changed_at ?? item.changed_date ?? item.created_at;
+}
+
+function budgetChangeSummary(item: BudgetHistoryItem): string | null {
+  const before = budgetHistoryBefore(item);
+  const after = budgetHistoryAfter(item);
+  if (
+    typeof before !== 'number' || !Number.isFinite(before) ||
+    typeof after !== 'number' || !Number.isFinite(after)
+  ) return null;
+  const difference = after - before;
+  const changeText = difference === 0
+    ? '변동 없음'
+    : `${formatWon(Math.abs(difference))} ${difference > 0 ? '증액' : '감액'}`;
+  return `${item.category_name} 예산 ${formatWon(before)} → ${formatWon(after)} (${changeText})`;
 }
 
 function categoryUsageRatio(category: BudgetUsageCategory) {
@@ -526,7 +542,7 @@ export default function ReportScreen() {
 
     try {
       if (mode === 'weekly') {
-        const [weeklyResult, monthlyResult, statsResult] =
+        const [weeklyResult, monthlyResult, statsResult, historyResult] =
           await Promise.allSettled([
             getWeeklyReportFromApi(targetDate),
             getMonthlyReportFromApi(targetDate),
@@ -535,6 +551,7 @@ export default function ReportScreen() {
               startDate,
               endDate,
             }),
+            getBudgetHistoryFromApi({ startDate, endDate }),
           ]);
 
         if (weeklyResult.status !== 'fulfilled') {
@@ -557,12 +574,18 @@ export default function ReportScreen() {
           setChallengeStatsState('error');
         }
 
-        setBudgetHistory([]);
-        setBudgetHistoryState('idle');
+        if (historyResult.status === 'fulfilled') {
+          setBudgetHistory(historyResult.value);
+          setBudgetHistoryState('success');
+        } else {
+          setBudgetHistory([]);
+          setBudgetHistoryState('error');
+        }
 
         if (
           monthlyResult.status === 'rejected' ||
-          statsResult.status === 'rejected'
+          statsResult.status === 'rejected' ||
+          historyResult.status === 'rejected'
         ) {
           showToast('주간 리포트의 일부 부가 정보를 불러오지 못했어요.');
         }
@@ -1043,6 +1066,7 @@ export default function ReportScreen() {
             <ReportCommentCard
               text={weeklyReport.comment}
               source={weeklyReport.comment_source}
+              budgetChanges={budgetHistory}
             />
           </>
         ) : mode === 'monthly' && monthlyReport ? (
@@ -1332,6 +1356,7 @@ export default function ReportScreen() {
             <ReportCommentCard
               text={monthlyReport.comment}
               source={monthlyReport.comment_source}
+              budgetChanges={budgetHistory}
             />
           </>
         ) : (
@@ -1770,9 +1795,11 @@ function ChallengePerformanceCard({
 function ReportCommentCard({
   text,
   source,
+  budgetChanges = [],
 }: {
   text?: string | null;
   source?: string | null;
+  budgetChanges?: BudgetHistoryItem[];
 }) {
   return (
     <GlassCard tone="butter" style={styles.commentCard}>
@@ -1790,6 +1817,22 @@ function ReportCommentCard({
         <Text style={styles.commentText}>
           {text ?? '아직 생성된 소비 리뷰가 없어요.'}
         </Text>
+        {budgetChanges.some((item) => budgetChangeSummary(item) !== null) ? (
+          <View style={styles.commentBudgetPanel}>
+            <Text style={styles.commentBudgetLabel}>실제 예산 변경 내역</Text>
+            {budgetChanges.map((item, index) => {
+              const detail = budgetChangeSummary(item);
+              return detail ? (
+                <Text
+                  key={`${item.category_name}-${budgetHistoryDate(item) ?? 'unknown'}-${index}`}
+                  style={styles.commentBudgetText}
+                >
+                  {detail}
+                </Text>
+              ) : null;
+            })}
+          </View>
+        ) : null}
         {text && source ? (
           <Text style={styles.commentSource}>
             {source === 'llm'
@@ -2515,6 +2558,18 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '800',
     color: colors.text,
+  },
+  commentBudgetPanel: {
+    marginTop: 14, padding: 14, borderRadius: 14,
+    backgroundColor: colors.butterPale, gap: 7,
+  },
+  commentBudgetLabel: {
+    fontFamily: typography.fontFamily, fontSize: 12,
+    fontWeight: '900', color: colors.text,
+  },
+  commentBudgetText: {
+    fontFamily: typography.fontFamily, fontSize: 12,
+    lineHeight: 20, fontWeight: '700', color: colors.text,
   },
   commentSource: {
     marginTop: 9,

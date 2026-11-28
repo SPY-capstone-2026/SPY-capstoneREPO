@@ -7,6 +7,7 @@ import {
   PanResponder,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,6 +16,7 @@ import type { ImageStyle } from 'react-native';
 
 import { WanderingMascot } from '@/components/mascot';
 import { colors } from '@/constants/colors';
+import { typography } from '@/constants/typography';
 import { getCurrentUser } from '@/services/authService';
 import {
   getCharacterColor,
@@ -155,7 +157,7 @@ function EditableAsset({
         current.onChange(current.asset.id, {
           x: clamp(start.current.x + gesture.dx / width, 0, 1),
           y: clamp(start.current.y + gesture.dy / height, 0, 1),
-          scale: start.current.scale,
+          scale: current.placement.scale,
         });
       },
       onPanResponderTerminationRequest: () => false,
@@ -415,15 +417,25 @@ export function CharacterRoom({ inventory, onMascotPress, startInEditMode = fals
     : null;
 
   const changeSelected = (dx: number, dy: number, scaleChange = 0) => {
-    if (!selectedAsset || !effectivePlacement) return;
-    handleChange(selectedAsset.id, {
-      x: clamp(effectivePlacement.x + dx, 0, 1),
-      y: clamp(effectivePlacement.y + dy, 0, 1),
-      scale: clamp(
-        Math.round((effectivePlacement.scale + scaleChange) * 100) / 100,
-        MIN_ROOM_ASSET_SCALE,
-        MAX_ROOM_ASSET_SCALE,
-      ),
+    if (!selectedAsset) return;
+    const assetId = selectedAsset.id;
+    setDraft((current) => {
+      const placement = current[assetId] ?? defaultPlacement(
+        selectedAsset,
+        editorBounds.width > 0 ? editorBounds : { width: 360, height: 390 },
+      );
+      return {
+        ...current,
+        [assetId]: {
+          x: clamp(placement.x + dx, 0, 1),
+          y: clamp(placement.y + dy, 0, 1),
+          scale: clamp(
+            Math.round((placement.scale + scaleChange) * 100) / 100,
+            MIN_ROOM_ASSET_SCALE,
+            MAX_ROOM_ASSET_SCALE,
+          ),
+        },
+      };
     });
   };
 
@@ -484,64 +496,70 @@ export function CharacterRoom({ inventory, onMascotPress, startInEditMode = fals
       {allowEditing ? (
         <Modal visible={editing} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeWithoutSaving}>
           <SafeAreaView style={styles.modalSafe}>
-            <View style={styles.editorHeader}>
-              <View style={styles.editorHeaderCopy}>
-                <Text style={styles.editorTitle}>방 배치 편집</Text>
-                <Text style={styles.editorSubtitle}>가구·소품을 누르고 끌어 위치를 바꾸세요.</Text>
-              </View>
-              <Pressable accessibilityRole="button" onPress={closeWithoutSaving} disabled={saving} style={styles.textButton}>
-                <Text style={styles.textButtonLabel}>취소</Text>
-              </Pressable>
-            </View>
-
-            <View
-              style={styles.editorStageWrap}
-              onLayout={(event) => {
-                const { width, height } = event.nativeEvent.layout;
-                setEditorBounds({ width, height });
-              }}
+            <ScrollView
+              style={styles.editorScroll}
+              contentContainerStyle={styles.editorContent}
+              showsVerticalScrollIndicator={false}
             >
-              <RoomStage {...common} editing selectedId={selectedId} placements={draft} />
-            </View>
-
-            <View style={styles.controls}>
-              <Text style={styles.selectedText} numberOfLines={1}>
-                {selectedAsset ? `선택: ${selectedAsset.name}` : '가구 또는 소품을 선택하세요.'}
-              </Text>
-              {selectedAsset && effectivePlacement ? (
-                <>
-                  <View style={styles.controlLine}>
-                    <Text style={styles.controlCaption}>위치</Text>
-                    <View style={styles.buttonGroup}>
-                      <EditorButton text="←" label="왼쪽으로 이동" onPress={() => changeSelected(-0.03, 0)} />
-                      <EditorButton text="↑" label="위로 이동" onPress={() => changeSelected(0, -0.03)} />
-                      <EditorButton text="↓" label="아래로 이동" onPress={() => changeSelected(0, 0.03)} />
-                      <EditorButton text="→" label="오른쪽으로 이동" onPress={() => changeSelected(0.03, 0)} />
-                    </View>
-                  </View>
-                  <View style={styles.controlLine}>
-                    <Text style={styles.controlCaption}>크기 {Math.round(effectivePlacement.scale * 100)}%</Text>
-                    <View style={styles.buttonGroup}>
-                      <EditorButton text="−" label="크기 축소" onPress={() => changeSelected(0, 0, -0.1)} />
-                      <EditorButton text="+" label="크기 확대" onPress={() => changeSelected(0, 0, 0.1)} />
-                      <EditorButton text="기본 배치" label="선택한 가구 배치 초기화" onPress={resetSelected} wide />
-                    </View>
-                  </View>
-                </>
-              ) : (
-                <Text style={styles.helperText}>아이템을 선택하면 크기와 위치 조절 버튼이 나타납니다.</Text>
-              )}
-              {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
-              <View style={styles.footerButtons}>
-                <Pressable onPress={closeWithoutSaving} disabled={saving} style={[styles.footerButton, styles.cancelButton]}>
-                  <Text style={styles.cancelText}>취소</Text>
-                </Pressable>
-                <Pressable onPress={saveChanges} disabled={saving} style={[styles.footerButton, styles.saveButton]}>
-                  <Text style={styles.saveText}>{saving ? '저장 중…' : '배치 저장'}</Text>
+              <View style={styles.editorHeader}>
+                <View style={styles.editorHeaderCopy}>
+                  <Text style={styles.editorTitle}>방 배치 편집</Text>
+                  <Text style={styles.editorSubtitle}>가구·소품을 누르고 끌어 위치를 바꾸세요.</Text>
+                </View>
+                <Pressable accessibilityRole="button" onPress={closeWithoutSaving} disabled={saving} style={styles.textButton}>
+                  <Text style={styles.textButtonLabel}>취소</Text>
                 </Pressable>
               </View>
-              <Text style={styles.localNote}>배치는 이 기기의 현재 계정에만 저장됩니다. 다른 기기·친구 프로필에는 공유되지 않습니다.</Text>
-            </View>
+
+              <View
+                style={styles.editorStageWrap}
+                onLayout={(event) => {
+                  const { width, height } = event.nativeEvent.layout;
+                  setEditorBounds({ width, height });
+                }}
+              >
+                <RoomStage {...common} editing selectedId={selectedId} placements={draft} />
+              </View>
+
+              <View style={styles.controls}>
+                <Text style={styles.selectedText} numberOfLines={1}>
+                  {selectedAsset ? `선택: ${selectedAsset.name}` : '가구 또는 소품을 선택하세요.'}
+                </Text>
+                {selectedAsset && effectivePlacement ? (
+                  <>
+                    <View style={styles.controlLine}>
+                      <Text style={styles.controlCaption}>위치</Text>
+                      <View style={styles.buttonGroup}>
+                        <EditorButton text="←" label="왼쪽으로 이동" onPress={() => changeSelected(-0.03, 0)} />
+                        <EditorButton text="↑" label="위로 이동" onPress={() => changeSelected(0, -0.03)} />
+                        <EditorButton text="↓" label="아래로 이동" onPress={() => changeSelected(0, 0.03)} />
+                        <EditorButton text="→" label="오른쪽으로 이동" onPress={() => changeSelected(0.03, 0)} />
+                      </View>
+                    </View>
+                    <View style={styles.controlLine}>
+                      <Text style={styles.controlCaption}>크기 {Math.round(effectivePlacement.scale * 100)}%</Text>
+                      <View style={styles.buttonGroup}>
+                        <EditorButton text="−" label="크기 축소" onPress={() => changeSelected(0, 0, -0.1)} />
+                        <EditorButton text="+" label="크기 확대" onPress={() => changeSelected(0, 0, 0.1)} />
+                        <EditorButton text="기본 배치" label="선택한 가구 배치 초기화" onPress={resetSelected} wide />
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.helperText}>아이템을 선택하면 크기와 위치 조절 버튼이 나타납니다.</Text>
+                )}
+                {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+                <View style={styles.footerButtons}>
+                  <Pressable onPress={closeWithoutSaving} disabled={saving} style={[styles.footerButton, styles.cancelButton]}>
+                    <Text style={styles.cancelText}>취소</Text>
+                  </Pressable>
+                  <Pressable onPress={saveChanges} disabled={saving} style={[styles.footerButton, styles.saveButton]}>
+                    <Text style={styles.saveText}>{saving ? '저장 중…' : '배치 저장'}</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.localNote}>배치는 이 기기의 현재 계정에만 저장됩니다. 다른 기기·친구 프로필에는 공유되지 않습니다.</Text>
+              </View>
+            </ScrollView>
           </SafeAreaView>
         </Modal>
       ) : null}
@@ -587,40 +605,50 @@ const styles = StyleSheet.create({
   wanderArea: { width: '100%', height: '100%' },
   editEntry: {
     position: 'absolute', right: 12, bottom: 12, zIndex: 35,
-    borderRadius: 12, backgroundColor: '#FFFFFF',
-    borderWidth: 1, borderColor: '#B9A88D', paddingHorizontal: 13, paddingVertical: 9,
+    borderRadius: 13, backgroundColor: colors.butterStrong,
+    paddingHorizontal: 14, paddingVertical: 10,
   },
-  editEntryText: { color: '#493B2A', fontSize: 12, fontWeight: '800' },
-  editAsset: { position: 'absolute', zIndex: 21, borderRadius: 5, borderWidth: 1, borderStyle: 'dashed' },
+  editEntryText: { color: colors.text, fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '800' },
+  editAsset: { position: 'absolute', zIndex: 21, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed' },
   editAssetImage: { width: '100%', height: '100%' },
-  selectedAsset: { zIndex: 26, borderColor: '#5F4B2D', borderStyle: 'solid', borderWidth: 2 },
-  unselectedAsset: { borderColor: 'rgba(80,64,42,0.40)' },
-  selectionDot: { position: 'absolute', right: -4, bottom: -4, width: 9, height: 9, borderRadius: 5, backgroundColor: '#5F4B2D' },
+  selectedAsset: { zIndex: 26, borderColor: colors.butterDeep, borderStyle: 'solid', borderWidth: 2 },
+  unselectedAsset: { borderColor: 'rgba(100, 85, 56, 0.30)' },
+  selectionDot: { position: 'absolute', right: -4, bottom: -4, width: 9, height: 9, borderRadius: 5, backgroundColor: colors.butterDeep },
   pressed: { opacity: 0.7 },
-  modalSafe: { flex: 1, paddingHorizontal: 14, paddingTop: 16, paddingBottom: 16, backgroundColor: '#FFFFFF' },
-  editorHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'space-between', paddingBottom: 12 },
+  modalSafe: { flex: 1, backgroundColor: colors.background },
+  editorScroll: { flex: 1 },
+  editorContent: {
+    width: '100%', maxWidth: 720, alignSelf: 'center',
+    paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 14,
+  },
+  editorHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, justifyContent: 'space-between' },
   editorHeaderCopy: { flex: 1 },
-  editorTitle: { color: '#352B20', fontSize: 18, fontWeight: '800' },
-  editorSubtitle: { marginTop: 4, color: '#766959', fontSize: 11 },
-  textButton: { padding: 10 },
-  textButtonLabel: { fontSize: 13, fontWeight: '700', color: '#6F604B' },
-  editorStageWrap: { flex: 1, minHeight: 190, maxWidth: 780, width: '100%', alignSelf: 'center' },
-  controls: { width: '100%', maxWidth: 780, alignSelf: 'center', paddingTop: 12, gap: 10 },
-  selectedText: { color: '#352B20', fontSize: 14, fontWeight: '800', minHeight: 20 },
-  controlLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  controlCaption: { color: '#6D5E4B', fontSize: 12, fontWeight: '700' },
-  buttonGroup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  toolButton: { minWidth: 40, height: 36, borderWidth: 1, borderColor: '#D7CFBF', borderRadius: 9, backgroundColor: '#F6F3EE', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 },
-  wideToolButton: { minWidth: 75 },
-  toolButtonLabel: { color: '#493B2A', fontWeight: '800', fontSize: 13 },
-  helperText: { color: '#766959', fontSize: 11, minHeight: 72 },
-  errorText: { color: '#B03C3C', fontSize: 12, fontWeight: '700' },
+  editorTitle: { color: colors.text, fontFamily: typography.fontFamily, fontSize: 26, lineHeight: 34, fontWeight: '900' },
+  editorSubtitle: { marginTop: 5, color: colors.subText, fontFamily: typography.fontFamily, fontSize: 13, lineHeight: 19 },
+  textButton: { paddingHorizontal: 14, minHeight: 42, borderRadius: 13, backgroundColor: colors.butterPale, alignItems: 'center', justifyContent: 'center' },
+  textButtonLabel: { fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '800', color: colors.text },
+  // Match the 390px-high character-room preview so saved coordinates and scale
+  // are rendered in the same coordinate system when returning from the editor.
+  editorStageWrap: { height: 390, maxWidth: 680, width: '100%', alignSelf: 'center' },
+  controls: {
+    width: '100%', maxWidth: 680, alignSelf: 'center', padding: 16,
+    gap: 12, borderRadius: 20, backgroundColor: colors.surface,
+  },
+  selectedText: { color: colors.text, fontFamily: typography.fontFamily, fontSize: 15, fontWeight: '800', minHeight: 22 },
+  controlLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  controlCaption: { color: colors.subText, fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '800' },
+  buttonGroup: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  toolButton: { minWidth: 44, minHeight: 42, borderRadius: 12, backgroundColor: colors.butterPale, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  wideToolButton: { minWidth: 82 },
+  toolButtonLabel: { color: colors.text, fontFamily: typography.fontFamily, fontWeight: '800', fontSize: 13 },
+  helperText: { color: colors.subText, fontFamily: typography.fontFamily, fontSize: 12, lineHeight: 19, minHeight: 44 },
+  errorText: { color: colors.dangerText, fontFamily: typography.fontFamily, fontSize: 12, fontWeight: '700' },
   outsideError: { marginTop: 8, marginHorizontal: 6 },
   footerButtons: { flexDirection: 'row', gap: 9 },
-  footerButton: { height: 44, flex: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cancelButton: { backgroundColor: '#F4F1EC', borderWidth: 1, borderColor: '#D9CFBC' },
-  saveButton: { backgroundColor: '#443724' },
-  cancelText: { color: '#443724', fontSize: 13, fontWeight: '800' },
-  saveText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  localNote: { color: '#8C7D6D', fontSize: 10, lineHeight: 15 },
+  footerButton: { minHeight: 46, flex: 1, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  cancelButton: { backgroundColor: colors.butterPale },
+  saveButton: { backgroundColor: colors.butterStrong },
+  cancelText: { color: colors.text, fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '800' },
+  saveText: { color: colors.text, fontFamily: typography.fontFamily, fontSize: 13, fontWeight: '800' },
+  localNote: { color: colors.mutedText, fontFamily: typography.fontFamily, fontSize: 11, lineHeight: 16 },
 });
